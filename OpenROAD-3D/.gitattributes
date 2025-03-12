@@ -1,2 +1,0 @@
-# Make Github ignore the designs folder when determining repo language
-flow/designs/src/* linguist-vendored
