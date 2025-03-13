@@ -1,4 +1,4 @@
-# DREAMPlace
+# Place-3D
 
 Place-3D is basically built upon DREAMPlace, as described below.
 
