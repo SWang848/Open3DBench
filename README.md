@@ -6,7 +6,7 @@ Official implementation of the paper "Open3DBench: Open-Source Benchmark for 3D-
 
 We provide 8 synthesized netlists in this repository, which can be partitioned and placed in Place-3D (including the two macro placement strategies mentioned in the paper) to generate DEF results.
 
-The DEF results will be processed in OpenROAD-3D for Place-Opt, CTS, Legalization, Routing, RC Extraction, and HotSpot thermal simulation, leading to comprehensive PPA evaluation results.
+The DEF results will be processed in OpenROAD-3D for Place-Opt, CTS, Legalization, Routing, RC Extraction, and [HotSpot](https://github.com/uvahotspot/HotSpot) thermal simulation, leading to comprehensive PPA evaluation results.
 
 The above two steps can be done sequentially or separately. Note that due to the randomness in DREAMPlace across different machines (which slightly affects layout and thus PPA results), if you obtain layout results using Place-3D, 100% reproduction of PPA results is not guaranteed. However, our tests show that the impact is minimal and does not affect the conclusions of the paper. 
 
@@ -16,11 +16,9 @@ Alternatively, to reproduce the PPA results, we provide 16 DEFs corresponding to
 
 ### 1.1 Build Place-3D
 
-If you want to perform partitioning and 3D placement, you need to install the standard environment for DREAMPlace. We strongly recommend using the official Docker environment provided by DREAMPlace as it is very convenient and easy to use.
+If you want to perform partitioning and 3D placement, you need to install the standard environment for DREAMPlace. We strongly recommend using the official Docker environment provided by [DREAMPlace](https://github.com/limbo018/DREAMPlace?tab=readme-ov-file#build-with-docker) as it is very convenient and easy to use.
 
-After configuring the environment, you need to first download the [dataset](https://drive.google.com/file/d/15D2ge4FJsn4HP4o4AVzoQms6Xx-3ugZ0/view?usp=sharing) and place it in the `Place-3D/` directory.
-
-Next, execute the following commands:
+After configuring the environment, you need to first download the [dataset](https://drive.google.com/file/d/15D2ge4FJsn4HP4o4AVzoQms6Xx-3ugZ0/view?usp=sharing), unzip it and place it in the `Place-3D/` directory. Next, execute the following commands:
 
 ```bash
 cd Open3DBench/Place-3D
@@ -36,7 +34,7 @@ At this point, Place-3D is successfully configured.
 
 ### 1.2 Build OpenROAD-3D
 
-If you want to perform 3D PPA evaluation, you need to install the corresponding version of OpenROAD. The relevant commit hash is specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c). From our tests, we found that a pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866) version can also perfectly reproduce the PPA results. We strongly recommend directly installing this binary as it is very convenient and easy to use. Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html).
+If you want to perform 3D PPA evaluation, you need to install the corresponding version of OpenROAD. The commit hash is specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c). From our tests, we found that a pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866) version can also perfectly reproduce the PPA results. We strongly recommend directly installing this binary as it is very convenient and easy to use. Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html).
 
 ## 2. How to use
 
