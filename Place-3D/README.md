@@ -1,5 +1,7 @@
 # DREAMPlace
 
+Place-3D is basically built upon DREAMPlace, as described below.
+
 Deep learning toolkit-enabled VLSI placement.
 With the analogy between nonlinear VLSI placement and deep learning training problem, this tool is developed with deep learning toolkit for flexibility and efficiency.
 The tool runs on both CPU and GPU.
@@ -345,10 +347,10 @@ Yiting Liu, Hai Zhou, Jia Wang, Fan Yang, Xuan Zeng, Li Shang,
 - [4.1.0](https://github.com/limbo018/DREAMPlace/releases/tag/4.1.0)
   - Support BB step and 2-stage macro placement flow as published at ICCAD 2023
   - Tested under ISPD 2005 with all fixed macros and IO pads regarded as movable macros (see test/ispd2005free) and MMS benchmarks (see test/mms)
- 
+
 - [4.2.0](https://github.com/limbo018/DREAMPlace/releases/tag/4.2.0)
   - Support GiFt initialization as published at ICCAD 2024
- 
+
 # Reference Results for Macro Placement
 
 Recently, many studies chose DREAMPLace for macro placement, e.g., [[Cheng+, NeurIPS2021](https://arxiv.org/abs/2111.00234)], [[Lai+, NeurIPS2023](https://arxiv.org/pdf/2211.13382)], etc. However, the results reported on the same benchmarks vary significantly from one work to another. For better comparison, we provide the results collected from our GPU machine for reference. If your results deviate significantly (i.e., >5% longer HPWL) from the following numbers, something may be wrong. We recommend you to contact us with logs for validation.
