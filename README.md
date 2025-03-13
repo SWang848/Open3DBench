@@ -8,7 +8,9 @@ We provide 8 synthesized netlists in this repository, which can be partitioned a
 
 The DEF results will be processed in OpenROAD-3D for Place-Opt, CTS, Legalization, Routing, RC Extraction, and HotSpot thermal simulation, leading to comprehensive PPA evaluation results.
 
-The above two steps can be done sequentially or separately. Note that due to the small randomness in DREAMPlace across different machines (which slightly affects layout and thus PPA results), if you obtain layout results using Place-3D, perfect reproduction of PPA results is not guaranteed. However, our tests show that the impact is minimal and does not affect the conclusions of the paper. To reproduce the PPA results, we provide 16 DEF layouts corresponding to the two 3D placement strategies in Table 2 of the paper for 8 designs. By deploying the corresponding version of OpenROAD as instructed below, you can perfectly reproduce the PPA results in the table.
+The above two steps can be done sequentially or separately. Note that due to the randomness in DREAMPlace across different machines (which slightly affects layout and thus PPA results), if you obtain layout results using Place-3D, 100% reproduction of PPA results is not guaranteed. However, our tests show that the impact is minimal and does not affect the conclusions of the paper. 
+
+Alternatively, to reproduce the PPA results, we provide 16 DEFs corresponding to the two 3D placement strategies in Table 3 of the paper for 8 designs. By deploying the corresponding version of OpenROAD as instructed below, you can perfectly reproduce the PPA results in the table.
 
 ## 1. How to build
 
@@ -42,7 +44,11 @@ If you want to perform 3D PPA evaluation, you need to install the corresponding 
 
 Place-3D includes 3D tier partitioning and 3D placement. The initial netlists are already included in the benchmark downloaded earlier. After following the build process above, navigate to the Place-3D directory: `cd Open3DBench/Place-3D`, where multiple run scripts are provided.
 
-The script `run_2D.sh` includes commands for running `Hier-RTLMP-2D` and `DREAMPlace-2D` (with pre-computed macro placement results for Hier-RTLMP; only global placement is executed here). The script `run_3D.sh` includes commands for running `Open3D-DMP`, and `run_3D_tiling.sh` includes commands for running `Open3D-Tiling`. For specific commands, refer to `run_2D_all.sh` and `run_3D_all.sh`, which can be executed directly to run all designs, or you can copy a single line to execute an individual case.
+The script `run_2D.sh` includes commands for running `Hier-RTLMP-2D` and `DREAMPlace-2D` (with pre-computed macro placement results for Hier-RTLMP; only global placement is executed here). 
+
+The script `run_3D.sh` includes commands for running `Open3D-DMP`, and `run_3D_tiling.sh` includes commands for running `Open3D-Tiling`. 
+
+For specific commands, refer to `run_2D_all.sh` and `run_3D_all.sh`, which can be executed directly to run all designs, or you can copy a single line to execute an individual case.
 
 If you successfully execute the steps above, the corresponding DEF output will be located in the path `Open3DBench/Place-3D/install/results/`. You can proceed to the next step for PPA evaluation.
 
@@ -50,7 +56,17 @@ If you cannot run Place-3D but want to directly reproduce the 3D PPA evaluation 
 
 ### 2.2 Run OpenROAD-3D
 
-OpenROAD-3D includes the complete 3D PPA evaluation flow. Navigate to the directory `cd Open3DBench/OpenROAD-3D/flow`, where two scripts, `run_2D.sh` and `run_3D.sh`, are provided for running the two 2D methods and two 3D methods, respectively. You can copy any line from these scripts and run it directly in the current directory to execute the corresponding placement strategy and test design. Here, `2D` refers to `DREAMPlace-2D`, `2D_mp` refers to `Hier-RTLMP-2D`, `3D` refers to `Open3D-DMP`, and `3D_tiling` refers to `Open3D-Tiling`. Note that the corresponding placement steps in Section 2.1 must be completed beforehand, as the scripts will look for the layout DEF results in the path `Open3DBench/Place-3D/install/results/` as input. The results will be stored in the directories `Open3DBench/OpenROAD-3D/logs` and `Open3DBench/OpenROAD-3D/results`.
+OpenROAD-3D includes the complete 3D PPA evaluation flow. 
+
+Navigate to the directory `cd Open3DBench/OpenROAD-3D/flow`, where two scripts, `run_2D.sh` and `run_3D.sh`, are provided for running the two 2D methods and two 3D methods, respectively. 
+
+You can copy any line from these scripts and run it directly in the current directory to execute the corresponding placement strategy and test design. 
+
+Here, `2D` refers to `DREAMPlace-2D`, `2D_mp` refers to `Hier-RTLMP-2D`, `3D` refers to `Open3D-DMP`, and `3D_tiling` refers to `Open3D-Tiling`. 
+
+Note that the corresponding placement steps in Section 2.1 must be completed beforehand, as the scripts will look for the layout DEF results in the path `Open3DBench/Place-3D/install/results/` as input. 
+
+The results will be stored in the directories `Open3DBench/OpenROAD-3D/logs` and `Open3DBench/OpenROAD-3D/results`.
 
 ## 3. Citation
 
