@@ -1,6 +1,6 @@
 # Open3DBench
 
-Official implementation of the paper "Open3DBench: Open-Source Benchmark for 3D-IC Backend Implementation and PPA Evaluation". We aim to build a standardized, replicable, and user-friendly framework for 3D-IC PPA evaluation, specifically providing a benchmark for 3D placement techniques.
+Official implementation of the paper ["Open3DBench: Open-Source Benchmark for 3D-IC Backend Implementation and PPA Evaluation"](https://arxiv.org/abs/2503.12946). We aim to build a standardized, replicable, and user-friendly framework for 3D-IC PPA evaluation, specifically providing a benchmark for 3D placement techniques.
 
 ## 0. Overview
 
