@@ -89,5 +89,10 @@ The results will be stored in the directories `Open3DBench/OpenROAD-3D/logs` and
 ## 3. Citation
 
 ```
-
+@article{shi2025open3dbench,
+      title={{Open3DBench}: Open-Source Benchmark for {3D-IC} Backend Implementation and {PPA} Evaluation}, 
+      author={Yunqi Shi and Chengrui Gao and Wanqi Ren and Siyuan Xu and Ke Xue and Mingxuan Yuan and Chao Qian and Zhi-Hua Zhou},
+      year={2025},
+      journal={arXiv preprint}
+}
 ```
