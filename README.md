@@ -36,6 +36,26 @@ At this point, Place-3D is successfully configured.
 
 If you want to perform 3D PPA evaluation, you need to install the corresponding version of OpenROAD. The commit hash is specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c). From our tests, we found that a pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866) version can also perfectly reproduce the PPA results. We strongly recommend directly installing this binary as it is very convenient and easy to use. Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html).
 
+### 1.3 Build HotSpot
+
+To run thermal simulation for both 2D and 3D-ICs, you should build [HotSpot](https://github.com/uvahotspot/HotSpot). First navigate to `Open3DBench/OpenROAD-3D/flow/HotSpot`, then you can choose whether or not to build with SuperLU ([how to build](http://crd-legacy.lbl.gov/~xiaoye/SuperLU/)), which will speed up the simulation process. If you have built SuperLU, please modify the Makefile parameter SuperLUroot
+
+```
+SuperLUroot = /path/to/your/build
+```
+
+Then build HotSpot with option SUPERLU=1,
+
+```
+make SUPERLU=1
+```
+
+Or if you want to build without SuperLU,
+
+```
+make SUPERLU=0
+```
+
 ## 2. How to use
 
 ### 2.1 Run Place-3D
