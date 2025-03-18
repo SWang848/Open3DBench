@@ -8,9 +8,9 @@ export OPENROAD_EXE=$(command -v openroad)
 export YOSYS_EXE=$(command -v yosys)
 if [ "$DESIGN_DIMENSION" = "3D" ]
 then
-    # cp ../../Place-3D/install/results/${DEF_VERSION}_3D/${DEF_VERSION}_${DESIGN_DIMENSION}.gp.def designs/nangate45_3D/${DESIGN_NAME}/
-    # make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NAME}/config_upper_shrink.mk do-autoflow 
-    # make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NAME}/config.mk do-cts_eval 
+    cp ../../Place-3D/install/results/${DEF_VERSION}_3D/${DEF_VERSION}_${DESIGN_DIMENSION}.gp.def designs/nangate45_3D/${DESIGN_NAME}/
+    make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NAME}/config_upper_shrink.mk do-autoflow 
+    make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NAME}/config.mk do-cts_eval 
     make DESIGN_CONFIG=designs/nangate45_3D/${DESIGN_NAME}/config.mk do-hotspot
 
 elif [ "$DESIGN_DIMENSION" = "3D_tiling" ]
