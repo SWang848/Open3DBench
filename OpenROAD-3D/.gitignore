@@ -54,7 +54,6 @@ flow/*.met
 flow/*.opennet
 
 # Platforms
-flow/platforms/*
 !flow/platforms/asap7
 !flow/platforms/ihp-sg13g2
 !flow/platforms/nangate45
