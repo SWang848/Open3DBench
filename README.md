@@ -34,7 +34,17 @@ At this point, Place-3D is successfully configured.
 
 ### 1.2 Build OpenROAD-3D
 
-If you want to perform 3D PPA evaluation, you need to install the corresponding version of OpenROAD. The commit hash is specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c). From our tests, we found that a pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866) version can also perfectly reproduce the PPA results. We strongly recommend directly installing this binary as it is very convenient and easy to use. Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html).
+If you want to perform 3D PPA evaluation, you need to install the corresponding version of OpenROAD. Two installation options are provided below:
+
+#### Option 1:
+
+Follow the official OpenROAD build instructions with the commit hash specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c).
+
+#### Option 2:
+
+Use the pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866). Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html). 
+
+**Caution!** The binary for Ubuntu 22.04 contains a segmentation fault for RC extraction, which is the problem of the binary package itself. An alternative is to use the Ubuntu 20.04 version. You can pull a docker image for Ubuntu 20.04 and then build OpenROAD and run our code smoothly.
 
 ### 1.3 Build HotSpot
 
