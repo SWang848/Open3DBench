@@ -40,9 +40,9 @@ If you want to perform 3D PPA evaluation, you need to install the corresponding 
 
 Follow the official OpenROAD build instructions with the commit hash specified in the paper as [fbca14c](https://github.com/The-OpenROAD-Project/OpenROAD/commit/fbca14c).
 
-#### Option 2:
+#### Option 2 (suggested):
 
-Use the pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866). Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html). 
+Use the pre-built [binary](https://github.com/Precision-Innovations/OpenROAD/releases/tag/2.0-17198-g8396d0866) (if you choose ubuntu, 20.04 is the only version applicable, as detailed below). Installation details can be found [here](https://openroad-flow-scripts.readthedocs.io/en/latest/user/BuildWithPrebuilt.html). 
 
 **Caution!** The binary for Ubuntu 22.04 contains a segmentation fault for RC extraction, which is the problem of the binary package itself. An alternative is to use the Ubuntu 20.04 version. You can pull a docker image for Ubuntu 20.04 and then build OpenROAD and run our code smoothly.
 
