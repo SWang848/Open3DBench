@@ -5241,6 +5241,381 @@ MACRO HA_X1_upper
   END
 END HA_X1_upper
 
+MACRO INV_X1_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X1_upper 0 0 ;
+  SIZE 0.38 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.06 0.525 0.165 0.7 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.23 0.15 0.325 1.25 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 0.38 1.485 ;
+        RECT 0.04 0.975 0.11 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 0.38 0.085 ;
+        RECT 0.04 -0.085 0.11 0.425 ;
+    END
+  END VSS
+END INV_X1_upper
+
+MACRO INV_X16_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X16_upper 0 0 ;
+  SIZE 3.23 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.095 1.05 3.095 1.12 ;
+        RECT 3.025 0.525 3.095 1.12 ;
+        RECT 2 0.525 2.07 1.12 ;
+        RECT 1.2 0.525 1.27 1.12 ;
+        RECT 0.095 0.525 0.165 1.12 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 2.885 0.15 2.955 0.985 ;
+        RECT 0.235 0.28 2.955 0.42 ;
+        RECT 2.505 0.15 2.575 0.985 ;
+        RECT 2.135 0.28 2.205 0.985 ;
+        RECT 2.125 0.15 2.195 0.42 ;
+        RECT 1.745 0.15 1.815 0.985 ;
+        RECT 1.365 0.15 1.435 0.985 ;
+        RECT 0.985 0.15 1.055 0.985 ;
+        RECT 0.605 0.16 0.675 0.985 ;
+        RECT 0.235 0.18 0.305 0.985 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 3.23 1.485 ;
+        RECT 3.075 1.205 3.145 1.485 ;
+        RECT 2.695 1.205 2.765 1.485 ;
+        RECT 2.315 1.205 2.385 1.485 ;
+        RECT 1.935 1.205 2.005 1.485 ;
+        RECT 1.555 1.205 1.625 1.485 ;
+        RECT 1.175 1.205 1.245 1.485 ;
+        RECT 0.795 1.205 0.865 1.485 ;
+        RECT 0.415 1.205 0.485 1.485 ;
+        RECT 0.04 1.205 0.11 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 3.23 0.085 ;
+        RECT 3.075 -0.085 3.145 0.365 ;
+        RECT 2.695 -0.085 2.765 0.21 ;
+        RECT 2.315 -0.085 2.385 0.21 ;
+        RECT 1.935 -0.085 2.005 0.21 ;
+        RECT 1.555 -0.085 1.625 0.21 ;
+        RECT 1.175 -0.085 1.245 0.21 ;
+        RECT 0.795 -0.085 0.865 0.21 ;
+        RECT 0.415 -0.085 0.485 0.21 ;
+        RECT 0.04 -0.085 0.11 0.365 ;
+    END
+  END VSS
+END INV_X16_upper
+
+MACRO INV_X2_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X2_upper 0 0 ;
+  SIZE 0.57 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.06 0.525 0.185 0.7 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.25 0.15 0.32 1.25 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 0.57 1.485 ;
+        RECT 0.43 0.975 0.5 1.485 ;
+        RECT 0.055 0.975 0.125 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 0.57 0.085 ;
+        RECT 0.43 -0.085 0.5 0.425 ;
+        RECT 0.055 -0.085 0.125 0.425 ;
+    END
+  END VSS
+END INV_X2_upper
+
+MACRO INV_X32_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X32_upper 0 0 ;
+  SIZE 6.27 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.115 0.93 5.85 1 ;
+        RECT 5.78 0.525 5.85 1 ;
+        RECT 4.62 0.525 4.69 1 ;
+        RECT 3.48 0.525 3.55 1 ;
+        RECT 2.34 0.525 2.41 1 ;
+        RECT 1.2 0.525 1.27 1 ;
+        RECT 0.115 0.525 0.185 1 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 5.945 0.16 6.015 1.005 ;
+        RECT 0.25 0.28 6.015 0.42 ;
+        RECT 5.56 0.16 5.63 0.865 ;
+        RECT 5.18 0.16 5.25 0.865 ;
+        RECT 4.81 0.28 4.88 0.865 ;
+        RECT 4.8 0.16 4.87 0.42 ;
+        RECT 4.42 0.16 4.49 0.865 ;
+        RECT 4.04 0.16 4.11 0.865 ;
+        RECT 3.665 0.16 3.735 0.865 ;
+        RECT 3.28 0.16 3.35 0.865 ;
+        RECT 2.9 0.16 2.97 0.865 ;
+        RECT 2.525 0.16 2.595 0.865 ;
+        RECT 2.14 0.16 2.21 0.865 ;
+        RECT 1.76 0.16 1.83 0.865 ;
+        RECT 1.39 0.16 1.46 0.865 ;
+        RECT 1 0.16 1.07 0.865 ;
+        RECT 0.62 0.16 0.69 0.865 ;
+        RECT 0.25 0.16 0.32 0.865 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 6.27 1.485 ;
+        RECT 6.13 1.065 6.2 1.485 ;
+        RECT 5.75 1.065 5.82 1.485 ;
+        RECT 5.37 1.065 5.44 1.485 ;
+        RECT 4.99 1.065 5.06 1.485 ;
+        RECT 4.61 1.065 4.68 1.485 ;
+        RECT 4.23 1.065 4.3 1.485 ;
+        RECT 3.85 1.065 3.92 1.485 ;
+        RECT 3.47 1.065 3.54 1.485 ;
+        RECT 3.09 1.065 3.16 1.485 ;
+        RECT 2.71 1.065 2.78 1.485 ;
+        RECT 2.33 1.065 2.4 1.485 ;
+        RECT 1.95 1.065 2.02 1.485 ;
+        RECT 1.57 1.065 1.64 1.485 ;
+        RECT 1.19 1.065 1.26 1.485 ;
+        RECT 0.81 1.065 0.88 1.485 ;
+        RECT 0.43 1.065 0.5 1.485 ;
+        RECT 0.055 1.065 0.125 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 6.27 0.085 ;
+        RECT 6.13 -0.085 6.2 0.335 ;
+        RECT 5.75 -0.085 5.82 0.195 ;
+        RECT 5.37 -0.085 5.44 0.195 ;
+        RECT 4.99 -0.085 5.06 0.195 ;
+        RECT 4.61 -0.085 4.68 0.195 ;
+        RECT 4.23 -0.085 4.3 0.195 ;
+        RECT 3.85 -0.085 3.92 0.195 ;
+        RECT 3.47 -0.085 3.54 0.195 ;
+        RECT 3.09 -0.085 3.16 0.195 ;
+        RECT 2.71 -0.085 2.78 0.195 ;
+        RECT 2.33 -0.085 2.4 0.195 ;
+        RECT 1.95 -0.085 2.02 0.195 ;
+        RECT 1.57 -0.085 1.64 0.195 ;
+        RECT 1.19 -0.085 1.26 0.195 ;
+        RECT 0.81 -0.085 0.88 0.195 ;
+        RECT 0.43 -0.085 0.5 0.195 ;
+        RECT 0.055 -0.085 0.125 0.335 ;
+    END
+  END VSS
+END INV_X32_upper
+
+MACRO INV_X4_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X4_upper 0 0 ;
+  SIZE 0.95 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.06 0.525 0.17 0.7 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.615 0.15 0.685 1.04 ;
+        RECT 0.235 0.56 0.685 0.7 ;
+        RECT 0.61 0.15 0.685 0.7 ;
+        RECT 0.235 0.15 0.305 1.04 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 0.95 1.485 ;
+        RECT 0.795 0.98 0.865 1.485 ;
+        RECT 0.415 0.98 0.485 1.485 ;
+        RECT 0.04 0.98 0.11 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 0.95 0.085 ;
+        RECT 0.795 -0.085 0.865 0.425 ;
+        RECT 0.415 -0.085 0.485 0.425 ;
+        RECT 0.04 -0.085 0.11 0.425 ;
+    END
+  END VSS
+END INV_X4_upper
+
+MACRO INV_X8_upper
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN INV_X8_upper 0 0 ;
+  SIZE 1.71 BY 1.4 ;
+  SYMMETRY X Y ;
+  SITE FreePDK45_38x28_10R_NP_162NW_34O ;
+  PIN A
+    DIRECTION INPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 0.06 0.525 0.17 0.7 ;
+    END
+  END A
+  PIN ZN
+    DIRECTION OUTPUT ;
+    USE SIGNAL ;
+    PORT
+      LAYER metal19 ;
+        RECT 1.375 0.15 1.445 1.04 ;
+        RECT 0.235 0.56 1.445 0.7 ;
+        RECT 0.985 0.15 1.055 1.04 ;
+        RECT 0.605 0.15 0.675 1.04 ;
+        RECT 0.235 0.15 0.305 1.04 ;
+    END
+  END ZN
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 1.315 1.71 1.485 ;
+        RECT 1.555 0.97 1.625 1.485 ;
+        RECT 1.175 0.97 1.245 1.485 ;
+        RECT 0.795 0.97 0.865 1.485 ;
+        RECT 0.415 0.97 0.485 1.485 ;
+        RECT 0.04 0.97 0.11 1.485 ;
+    END
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+    SHAPE ABUTMENT ;
+    PORT
+      LAYER metal19 ;
+        RECT 0 -0.085 1.71 0.085 ;
+        RECT 1.555 -0.085 1.625 0.36 ;
+        RECT 1.175 -0.085 1.245 0.36 ;
+        RECT 0.795 -0.085 0.865 0.36 ;
+        RECT 0.415 -0.085 0.485 0.36 ;
+        RECT 0.04 -0.085 0.11 0.36 ;
+    END
+  END VSS
+END INV_X8_upper
+
 MACRO LOGIC0_X1_upper
   CLASS CORE ;
   ORIGIN 0 0 ;
