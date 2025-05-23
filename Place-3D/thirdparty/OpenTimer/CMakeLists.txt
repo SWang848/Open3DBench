@@ -203,30 +203,30 @@ message(STATUS "OpenTimer shell: ${OT_SHELL}")
 # Example
 ###########################################################
 
-# simple
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/simple)
-add_executable(simple example/simple/simple.cpp)
-target_link_libraries(simple ${OT_LINK_FLAGS})
+# # simple
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/simple)
+# add_executable(simple example/simple/simple.cpp)
+# target_link_libraries(simple ${OT_LINK_FLAGS})
 
-# incremental
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/incremental)
-add_executable(incremental example/incremental/incremental.cpp)
-target_link_libraries(incremental ${OT_LINK_FLAGS})
+# # incremental
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/incremental)
+# add_executable(incremental example/incremental/incremental.cpp)
+# target_link_libraries(incremental ${OT_LINK_FLAGS})
 
-# unit
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/unit)
-add_executable(unit example/unit/unit.cpp)
-target_link_libraries(unit ${OT_LINK_FLAGS})
+# # unit
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/unit)
+# add_executable(unit example/unit/unit.cpp)
+# target_link_libraries(unit ${OT_LINK_FLAGS})
 
-# optimizer
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/optimizer)
-add_executable(optimizer example/optimizer/optimizer.cpp)
-target_link_libraries(optimizer ${OT_LINK_FLAGS})
+# # optimizer
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/optimizer)
+# add_executable(optimizer example/optimizer/optimizer.cpp)
+# target_link_libraries(optimizer ${OT_LINK_FLAGS})
 
-# sizer
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/sizer)
-add_executable(sizer example/sizer/sizer.cpp)
-target_link_libraries(sizer ${OT_LINK_FLAGS})
+# # sizer
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/sizer)
+# add_executable(sizer example/sizer/sizer.cpp)
+# target_link_libraries(sizer ${OT_LINK_FLAGS})
 
 ##aes_cipher
 #set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/example/aes_cipher)
