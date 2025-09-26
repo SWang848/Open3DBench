@@ -27,6 +27,7 @@ import torch
 import random
 
 from Partitioner import partition
+from TPGNN import TPGNN
 
 def seed_everything(seed=2022):
     random.seed(seed)
@@ -53,7 +54,6 @@ def place(params, partition_result=None, choice=None, upper_die_names=None):
         placedb(params, partition_result, upper_die_names)
     else:
         placedb(params)
-    
     logging.info("reading database takes %.2f seconds" % (time.time() - tt))
     
     # Read timing constraints provided in the benchmarks into out timing analysis
@@ -164,8 +164,7 @@ def place(params, partition_result=None, choice=None, upper_die_names=None):
                 if placedb.node_name2id_map[name] in partition_result:
                     name_map[name] = '_bottom'
                 else:
-                    name_map[name] = '_upper'
-                    
+                    name_map[name] = '_upper'      
         new_def = ''
         with open(gp_out_file, 'r', encoding='utf-8') as def_file:
             indicator = False
@@ -360,11 +359,14 @@ if __name__ == "__main__":
     """
     @brief main function to invoke the entire placement flow.
     """
-    
     logging.root.name = 'DREAMPlace'
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
-                        stream=sys.stdout)
+                        # stream=sys.stdout)
+                        filename='placement_3D_ariane133.log',
+                        filemode='w')
+    
+    TPGNN_flag = True
     params = Params.Params()
     seed_everything(params.random_seed)
     params.printWelcome()
@@ -422,12 +424,98 @@ if __name__ == "__main__":
         
     if params.partition_params["type"] == 2:
         # run partition
-        partition_result, upper_die_names = partition(params)
+        if TPGNN_flag:
+            # Initialize placement database
+            placedb = PlaceDB.PlaceDB()
+            placedb(params)
+            
+            # Initialize TPGNN with placement database
+            tpgnn = TPGNN(placedb)
+            
+            # Load timing features - construct path relative to current working directory
+            timing_report_path = os.path.join(os.getcwd(), params.timing_report_input)
+            tpgnn.timing_features = tpgnn.parse_timing_report(timing_report_path)
+            
+            # Build clique graph
+            G = tpgnn.clique_graph_construction()
+            
+            # Apply hierarchy-aware edge contraction
+            G_contracted = tpgnn.hierarchy_aware_graph_construction(G)
+            
+            # # reset the def_input to the original def file
+            # reorder_nodes(params)
+            
+            
+            # Generate embeddings using TP-GNN
+            tpgnn_model, tpgnn_results = tpgnn.generate_embeddings(G_contracted, 
+                                           output_dir="./tpgnn_results", 
+                                           epochs=1)
+            
+            # Run partitioning using GNN embeddings
+            partition_result, upper_die_names = tpgnn.partition(
+                G,
+                G_contracted,
+                tpgnn_results['final_embeddings'],
+                output_dir="./tpgnn_results"
+            )
+            
+            # update partition result based on the clear def file
+            placedb = PlaceDB.PlaceDB()
+            params.placed_def_input = ""
+            placedb(params)
+            partition_result = []
+            for name in placedb.node_names:
+                name = name.decode('utf-8')
+                node = placedb.node_name2id_map[name]
+                if node < (placedb.num_physical_nodes - placedb.num_terminal_NIs):    
+                    if name in upper_die_names:
+                        continue
+                    else:
+                        partition_result.append(node)
+            
+        else:
+            partition_result, upper_die_names = partition(params)
         # run 2D placement for memory placement
+                    # --- START: ADDED FOR DEBUGGING ---
+        # Log the area distribution after partitioning
+        placedb = PlaceDB.PlaceDB()
+        placedb(params)
+        top_die_macro_area = 0
+        bottom_die_macro_area = 0
+        top_die_macro_count = 0
+        bottom_die_macro_count = 0
+
+        # Re-check is_macro for the new placedb instance
+        is_macro_after_partition = np.zeros(placedb.num_nodes, dtype=bool)
+        for i in range(placedb.num_physical_nodes):
+                # A common heuristic: if a cell is much taller than a standard cell row, it's a macro
+            if placedb.node_size_y[i] > placedb.row_height * 2:
+                is_macro_after_partition[i] = True
+
+        for i in range(placedb.num_physical_nodes):
+            if is_macro_after_partition[i]:
+                node_id = i
+                node_name = placedb.node_names[i].decode('utf-8')
+                area = placedb.node_size_x[i] * placedb.node_size_y[i]
+                if node_name in upper_die_names:
+                    top_die_macro_area += area
+                    top_die_macro_count += 1
+                else:
+                    bottom_die_macro_area += area
+                    bottom_die_macro_count += 1
+        
+        logging.info("--- Partition Analysis ---")
+        logging.info(f"Top Die Macro Count: {top_die_macro_count}")
+        logging.info(f"Top Die Macro Area: {top_die_macro_area:.2f}")
+        logging.info(f"Bottom Die Macro Count: {bottom_die_macro_count}")
+        logging.info(f"Bottom Die Macro Area: {bottom_die_macro_area:.2f}")
+        logging.info("--------------------------")
+        # --- END: ADDED FOR DEBUGGING ---
+        
         tt = time.time()
         params.plot_flag = 0
         place(params, partition_result, choice="mem-upper")
-
+        breakpoint()
         logging.info("mem-upper placement takes %.3f seconds" % (time.time() - tt))
         
         # run 2D placement for memory placement

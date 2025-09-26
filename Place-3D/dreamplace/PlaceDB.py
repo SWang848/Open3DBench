@@ -679,8 +679,20 @@ class PlaceDB (object):
         """
         tt = time.time()
 
+        # Check if placed DEF file is provided and use it as the main DEF input
+        # The placed DEF contains all the same information as the original DEF plus placement coordinates
+        original_def_input = None
+        if hasattr(params, 'placed_def_input') and params.placed_def_input and os.path.exists(params.placed_def_input):
+            logging.info("Using placed DEF file as main input: %s" % params.placed_def_input)
+            original_def_input = params.def_input  # Save original
+            params.def_input = params.placed_def_input  # Replace with placed DEF
+
         self.read(params, partition_result, upper_die_names)
         self.initialize(params)
+
+        # Restore original def_input parameter if we modified it
+        if original_def_input is not None:
+            params.def_input = original_def_input
 
         logging.info("reading benchmark takes %g seconds" % (time.time()-tt))
 

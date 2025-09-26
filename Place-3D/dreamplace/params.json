@@ -14,6 +14,16 @@
     "default" : "", 
     "required" : "required for LEF/DEF"
     },
+"placed_def_input" : {
+    "description" : "input placed DEF file containing component positions for clique graph construction", 
+    "default" : "", 
+    "required" : "required for clique graph partitioning"
+    },
+"timing_report_input" : {
+    "description" : "input timing report file", 
+    "default" : "", 
+    "required" : "required for timing-driven mode"
+    },
 "verilog_input" : {
     "description" : "input VERILOG file, provide circuit netlist information if it is not included in DEF file", 
     "default" : "", 

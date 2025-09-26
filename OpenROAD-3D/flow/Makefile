@@ -151,9 +151,10 @@ export MAX_T_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/max_t.py
 export DIVIDE_GRID_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/divide_grid.py
 export DIVIDE_DEF_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/divide_def.py
 export REPORT_POWER_TCL   := $(HOTSPOT_SCRIPTS_DIR)/scripts/run_report_power.tcl
+export REPORT_POWER_2D_TCL := $(HOTSPOT_SCRIPTS_DIR)/scripts/run_report_power_2D.tcl
 export MERGE_PTRACE_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/merge_ptrace.py
 export HOTSPOT_OUTPUT   := $(HOTSPOT_SCRIPTS_DIR)/scripts/output
-export STA_EXE            := /usr/local/bin/sta
+export STA_EXE            := /usr/bin/sta
 export FINAL_DEF ?= $(RESULTS_DIR)/6_final.def
 export FINAL_V ?= $(RESULTS_DIR)/6_final.v
 export FINAL_SDC ?= $(RESULTS_DIR)/6_1_fill.sdc
@@ -607,6 +608,20 @@ do-$(1):
 	mv $(LOG_DIR)/$(1).tmp.log $(LOG_DIR)/$(1).log
 endef
 
+# ==============================================================================
+# example
+# $(call do-step,3_4_place_resized,$(RESULTS_DIR)/3_3_place_gp.odb $(RESULTS_DIR)/2_floorplan.sdc,resize)
+# Rule 1: File dependency
+# $(RESULTS_DIR)/3_4_place_resized.odb: $(RESULTS_DIR)/3_3_place_gp.odb $(RESULTS_DIR)/2_floorplan.sdc
+# 	$(UNSET_AND_MAKE) do-3_4_place_resized
+
+# # Rule 2: PHONY target (the actual work)
+# .PHONY: do-3_4_place_resized
+# do-3_4_place_resized:
+# 	($(TIME_CMD) $(OPENROAD_CMD) $(SCRIPTS_DIR)/resize.tcl -metrics $(LOG_DIR)/3_4_place_resized.json) 2>&1 | tee $(LOG_DIR)/3_4_place_resized.tmp.log
+# 	mv $(LOG_DIR)/3_4_place_resized.tmp.log $(LOG_DIR)/3_4_place_resized.log
+
+
 # generate make rules to copy a file, if a dependency change and
 # a do- sibling rule that copies the file unconditionally.
 #
@@ -664,15 +679,20 @@ do-def_eval:
 	$(UNSET_AND_MAKE) do-2_6_floorplan_pdn do-2_floorplan 
 	cp $(RESULTS_DIR)/1_synth.sdc $(RESULTS_DIR)/2_floorplan.sdc
 	cp $(RESULTS_DIR)/2_floorplan.odb $(RESULTS_DIR)/3_3_place_gp.odb
-	$(UNSET_AND_MAKE) do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc do-cts do-route do-finish
+	$(UNSET_AND_MAKE) do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc do-3_6_post_place_timing do-cts do-route do-finish
 
 .PHONY: do-pre_cts
 do-pre_cts:
 	mkdir -p $(RESULTS_DIR) $(LOG_DIR) $(REPORTS_DIR)
+# copy preplaced design, the output of init_odb.tcl which is the odb file of the pre-placed design
 	cp $(RESULTS_DIR)/$(DESIGN_DIMENSION)_out.odb $(RESULTS_DIR)/2_5_floorplan_tapcell.odb
+# run power distribution network	
 	$(UNSET_AND_MAKE) do-2_6_floorplan_pdn do-2_floorplan 
+# copy timing constraints to 2_floorplan.sdc
 	cp $(RESULTS_DIR)/1_synth.sdc $(RESULTS_DIR)/2_floorplan.sdc
+# rename to the new global placement odb file
 	cp $(RESULTS_DIR)/2_floorplan.odb $(RESULTS_DIR)/3_3_place_gp.odb
+# run global placement, timing-driven placement, and CTS
 	$(UNSET_AND_MAKE) do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc do-cts 
 
 .PHONY: do-2D_flow
@@ -789,7 +809,8 @@ do-hotspot_2D:
 		--prefix "Grid"
 
 	@echo "[2/6] Running power analysis with STA..."
-	$(STA_EXE) $(REPORT_POWER_TCL)
+# $(STA_EXE) $(REPORT_POWER_TCL)
+	$(STA_EXE) $(REPORT_POWER_2D_TCL)
 
 	@echo "[3/6] Creating version directory..."
 	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
@@ -900,13 +921,21 @@ $(eval $(call do-copy,3_place,3_5_place_dp.odb,))
 
 $(eval $(call do-copy,3_place,2_floorplan.sdc,,.sdc))
 
+# STEP 6: Post-placement timing analysis
+#-------------------------------------------------------------------------------
+$(eval $(call do-step,3_6_post_place_timing,$(RESULTS_DIR)/3_place.odb $(RESULTS_DIR)/3_place.sdc,post_place_timing))
+
 .PHONY: do-place
 do-place:
-	$(UNSET_AND_MAKE) do-3_1_place_gp_skip_io do-3_2_place_iop do-3_3_place_gp do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc
+	$(UNSET_AND_MAKE) do-3_1_place_gp_skip_io do-3_2_place_iop do-3_3_place_gp do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc do-3_6_post_place_timing
 
 .PHONY: do-place-global
 do-place-global:
-	$(UNSET_AND_MAKE) do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc
+	$(UNSET_AND_MAKE) do-3_4_place_resized do-3_5_place_dp do-3_place do-3_place.sdc do-3_6_post_place_timing
+
+.PHONY: do-post-place-timing
+do-post-place-timing:
+	$(UNSET_AND_MAKE) do-3_6_post_place_timing
 
 .PHONY: do-globalflow
 do-globalflow: do-place-global do-cts do-route do-finish
