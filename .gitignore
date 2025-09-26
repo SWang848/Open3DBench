@@ -1,0 +1,107 @@
+# Build directories
+build/
+*/build/
+**/build/
+Place-3D/build/
+OpenROAD-3D/build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Compiled binaries and libraries
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyTorch model files
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+
+# NumPy arrays
+*.npy
+*.npz
+
+# Results and outputs
+results/
+outputs/
+logs/
+reports/
+tpgnn_results/
+benchmarks/
+temp_save/
+
+# OpenROAD flow outputs
+OpenROAD-3D/flow/logs/
+OpenROAD-3D/flow/reports/
+OpenROAD-3D/flow/results/
+OpenROAD-3D/flow/HotSpot/
+
+# Place-3D results
+Place-3D/results/
+Place-3D/benchmarks/
+Place-3D/tpgnn_results/
+Place-3D/install/results/
+Place-3D/install/tpgnn_results/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.tar
+*.gz
+*.zip
+
+# Third-party build artifacts
+Place-3D/thirdparty/*/build/
+Place-3D/thirdparty/*/install/
+OpenROAD-3D/thirdparty/*/build/
+OpenROAD-3D/thirdparty/*/install/
+
+# Keep only these specific files tracked:
+# - Source code files (.py, .cpp, .h, .hpp, .c, .tcl, .sh)
+# - Configuration files (.json, .yaml, .yml, .toml, .cfg)
+# - Documentation files (.md, .txt, .rst)
+# - Scripts (.sh, .py, .tcl)
+# - Makefiles and CMakeLists.txt
