@@ -61,6 +61,9 @@ OpenROAD-3D/flow/logs/
 OpenROAD-3D/flow/reports/
 OpenROAD-3D/flow/results/
 OpenROAD-3D/flow/HotSpot/
+OpenROAD-3D/flow/HotSpot/scripts/output/
+OpenROAD-3D/flow/final.csv
+OpenROAD-3D/flow/designs/*/*.gp.def
 
 # Place-3D results
 Place-3D/results/
