@@ -64,6 +64,8 @@ OpenROAD-3D/flow/HotSpot/
 OpenROAD-3D/flow/HotSpot/scripts/output/
 OpenROAD-3D/flow/final.csv
 OpenROAD-3D/flow/designs/*/*.gp.def
+OpenROAD-3D/flow/designs/nangate45_3D/ariane133/ariane133_3D.gp.def
+OpenROAD-3D/flow/designs/nangate45_3D/bp_be_top/bp_be_3D_tiling.gp.def
 
 # Place-3D results
 Place-3D/results/
