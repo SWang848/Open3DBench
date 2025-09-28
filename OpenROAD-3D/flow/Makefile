@@ -151,7 +151,6 @@ export MAX_T_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/max_t.py
 export DIVIDE_GRID_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/divide_grid.py
 export DIVIDE_DEF_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/divide_def.py
 export REPORT_POWER_TCL   := $(HOTSPOT_SCRIPTS_DIR)/scripts/run_report_power.tcl
-export REPORT_POWER_2D_TCL := $(HOTSPOT_SCRIPTS_DIR)/scripts/run_report_power_2D.tcl
 export MERGE_PTRACE_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/merge_ptrace.py
 export HOTSPOT_OUTPUT   := $(HOTSPOT_SCRIPTS_DIR)/scripts/output
 export STA_EXE            := /usr/bin/sta
@@ -809,8 +808,7 @@ do-hotspot_2D:
 		--prefix "Grid"
 
 	@echo "[2/6] Running power analysis with STA..."
-# $(STA_EXE) $(REPORT_POWER_TCL)
-	$(STA_EXE) $(REPORT_POWER_2D_TCL)
+	$(STA_EXE) $(REPORT_POWER_TCL)
 
 	@echo "[3/6] Creating version directory..."
 	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)"

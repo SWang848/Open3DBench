@@ -366,7 +366,7 @@ if __name__ == "__main__":
                         filename='placement_3D_ariane133.log',
                         filemode='w')
     
-    TPGNN_flag = True
+    TPGNN_flag = False
     params = Params.Params()
     seed_everything(params.random_seed)
     params.printWelcome()
@@ -474,48 +474,13 @@ if __name__ == "__main__":
                         partition_result.append(node)
             
         else:
+            params.placed_def_input = ""
             partition_result, upper_die_names = partition(params)
-        # run 2D placement for memory placement
-                    # --- START: ADDED FOR DEBUGGING ---
-        # Log the area distribution after partitioning
-        placedb = PlaceDB.PlaceDB()
-        placedb(params)
-        top_die_macro_area = 0
-        bottom_die_macro_area = 0
-        top_die_macro_count = 0
-        bottom_die_macro_count = 0
-
-        # Re-check is_macro for the new placedb instance
-        is_macro_after_partition = np.zeros(placedb.num_nodes, dtype=bool)
-        for i in range(placedb.num_physical_nodes):
-                # A common heuristic: if a cell is much taller than a standard cell row, it's a macro
-            if placedb.node_size_y[i] > placedb.row_height * 2:
-                is_macro_after_partition[i] = True
-
-        for i in range(placedb.num_physical_nodes):
-            if is_macro_after_partition[i]:
-                node_id = i
-                node_name = placedb.node_names[i].decode('utf-8')
-                area = placedb.node_size_x[i] * placedb.node_size_y[i]
-                if node_name in upper_die_names:
-                    top_die_macro_area += area
-                    top_die_macro_count += 1
-                else:
-                    bottom_die_macro_area += area
-                    bottom_die_macro_count += 1
-        
-        logging.info("--- Partition Analysis ---")
-        logging.info(f"Top Die Macro Count: {top_die_macro_count}")
-        logging.info(f"Top Die Macro Area: {top_die_macro_area:.2f}")
-        logging.info(f"Bottom Die Macro Count: {bottom_die_macro_count}")
-        logging.info(f"Bottom Die Macro Area: {bottom_die_macro_area:.2f}")
-        logging.info("--------------------------")
-        # --- END: ADDED FOR DEBUGGING ---
         
         tt = time.time()
         params.plot_flag = 0
         place(params, partition_result, choice="mem-upper")
-        breakpoint()
+        # breakpoint()
         logging.info("mem-upper placement takes %.3f seconds" % (time.time() - tt))
         
         # run 2D placement for memory placement
