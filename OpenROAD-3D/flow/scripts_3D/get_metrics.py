@@ -274,15 +274,13 @@ def getMetrics(dir_path, method):
 if __name__ == '__main__':
 
     
-    methods = ["2D", "2D_dmp", "2D_mp", "3D"]
+    methods = ["2D_dmp", "2D_mp", "3D", "3D_tiling"]
     metrics = []
     for method in methods:
-        if method == "2D":
+        if method == "2D_dmp" or method == "2D_mp":
             dir_path = f"logs/nangate45"
-        elif method == "3D":
+        elif method == "3D" or method == "3D_tiling":
             dir_path = f"logs/nangate45_3D"
-        else:
-            dir_path = f"logs/nangate45"
         metric_dict = getMetrics(dir_path=dir_path, method=method)
         metrics.append(metric_dict)
 
