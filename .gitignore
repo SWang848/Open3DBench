@@ -54,7 +54,7 @@ logs/
 reports/
 tpgnn_results/
 benchmarks/
-temp_save/
+openroad_temp_save/
 
 # OpenROAD flow outputs
 OpenROAD-3D/flow/logs/

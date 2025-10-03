@@ -52,6 +52,8 @@
              ],
 "def_input" : "benchmarks/or_3D/ariane133/2_2_floorplan_io.def",
 "verilog_input" : "benchmarks/or_3D/ariane133/ariane133_3D.v",
+"timing_report_input" : "results/ariane133_2D/post_place_timing_setup.rpt",
+"placed_def_input" : "results/ariane133_2D/ariane133_2D.gp.def",
 "gpu" : 1,
 "num_bins_x" : 1024,
 "num_bins_y" : 1024,
