@@ -517,26 +517,6 @@ class TPGNNTrainer:
         
         return total_loss
     
-    def evaluate(self, data: Data, targets: Optional[torch.Tensor] = None) -> Dict[str, float]:
-        """
-        Evaluate the model.
-        
-        Args:
-            data: PyTorch Geometric Data object
-            targets: Optional target values
-            
-        Returns:
-            Dictionary of evaluation metrics
-        """
-        self.model.eval()
-        data = data.to(self.device)
-        
-        with torch.no_grad():
-            embeddings = self.model(data)
-        
-        metrics = {'avg_loss': 0.0}  # Placeholder for now
-        return metrics
-    
     def update_learning_rate(self, loss_value: float):
         """
         Update learning rate based on loss value using scheduler.
@@ -691,66 +671,33 @@ class TPGNN:
         """
         # Get total number of nodes
         total_nodes = self.placedb.num_physical_nodes - self.placedb.num_terminal_NIs
+        timing_coverage_rate = len(self.timing_features) / total_nodes * 100
         
-        print(f"\n=== TIMING COVERAGE ANALYSIS ===")
-        print(f"Total positioned components: {total_nodes}")
-        print(f"Nodes with timing information: {len(self.timing_features)}")
-        print(f"Timing coverage: {len(self.timing_features)/total_nodes*100:.2f}%")
-        
-        # Identify macros based on area threshold (using same threshold as in the code)
+        # Identify macros based on area threshold
         macro_threshold = 1000.0
         macro_count = 0
         macro_with_timing = 0
         
-        # Check each movable node - iterate through actual node names like in clique_graph_construction
+        # Check each movable node
         for node_name in self.placedb.node_names:
             node_name_str = node_name.decode('utf-8')
             node_id = self.placedb.node_name2id_map[node_name_str]
             
             # Only check movable nodes (exclude IO ports)
             if node_id < (self.placedb.num_physical_nodes - self.placedb.num_terminal_NIs):
-                # Calculate area
+                # Calculate area and check if it's a macro
                 area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
-                # Check if it's a macro
                 if area > macro_threshold:
                     macro_count += 1
-                    # Use node ID directly for timing features lookup
                     if node_id in self.timing_features:
                         macro_with_timing += 1
         
-        print(f"\n=== MACRO ANALYSIS ===")
-        print(f"Total macros (area > {macro_threshold}): {macro_count}")
-        print(f"Macros with timing information: {macro_with_timing}")
-        if macro_count > 0:
-            print(f"Macro timing coverage: {macro_with_timing/macro_count*100:.2f}%")
-        else:
-            print("No macros found!")
+        # Calculate macro timing coverage rate
+        macro_timing_coverage_rate = macro_with_timing / macro_count * 100 if macro_count > 0 else 0
         
-        # Additional statistics
-        non_macro_count = total_nodes - macro_count
-        non_macro_with_timing = len(self.timing_features) - macro_with_timing
-        
-        print(f"\n=== DETAILED BREAKDOWN ===")
-        print(f"Non-macro nodes: {non_macro_count}")
-        print(f"Non-macro nodes with timing: {non_macro_with_timing}")
-        if non_macro_count > 0:
-            print(f"Non-macro timing coverage: {non_macro_with_timing/non_macro_count*100:.2f}%")
-        
-        # Show some examples of nodes with timing
-        print(f"\n=== SAMPLE NODES WITH TIMING ===")
-        timing_node_ids = list(self.timing_features.keys())[:5]
-        for node_id in timing_node_ids:
-            features = self.timing_features[node_id]
-            node_name = features.get('node_name', f'node_{node_id}')
-            print(f"  {node_name} (ID:{node_id}): avg_cap={features['avg_cap']:.3f}, avg_slew={features['avg_slew']:.3f}, avg_delay={features['avg_delay']:.3f}")
-        
-        # Debug: Show the range of node IDs in timing features
-        if self.timing_features:
-            timing_ids = list(self.timing_features.keys())
-            print(f"\n=== TIMING FEATURES DEBUG ===")
-            print(f"Node ID range in timing features: {min(timing_ids)} to {max(timing_ids)}")
-            print(f"Total movable nodes: {self.placedb.num_movable_nodes}")
-            print(f"Node IDs in timing features: {sorted(timing_ids)[:10]}...")  # Show first 10
+        # Log the key coverage metrics
+        logging.info(f"Timing coverage: {timing_coverage_rate:.2f}% ({len(self.timing_features)}/{total_nodes} nodes)")
+        logging.info(f"Macro timing coverage: {macro_timing_coverage_rate:.2f}% ({macro_with_timing}/{macro_count} macros)")
 
     def clique_graph_construction(self):
         """
@@ -818,6 +765,7 @@ class TPGNN:
         logging.info(f"Created clique graph with {len(positioned_nodes)} nodes")
         # Create edges based on net connectivity with Manhattan distance as weights
         edge_count = 0
+        ignored_nets = 0
         
         # Iterate through all nets to find connected components
         edges = []
@@ -838,6 +786,7 @@ class TPGNN:
                 edges.extend(combinations(connected_nodes, r=2))
             else:
                 # Skip creating clique edges for large nets to avoid excessive edge creation
+                ignored_nets += 1
                 logging.debug(f"Skipping clique creation for net {net_name.decode('utf-8')} with {len(connected_nodes)} pins (>= 20)")  
         
         # Add all edges to the graph with Manhattan distance weights
@@ -852,7 +801,17 @@ class TPGNN:
             G.add_edge(node1, node2, weight=manhattan_dist)
             edge_count += 1
 
+        # Calculate inclusion rates
+        total_nets = len(self.placedb.net_names)
+        included_nets = total_nets - ignored_nets
+        net_inclusion_rate = included_nets / total_nets * 100 if total_nets > 0 else 0
+        
+        node_inclusion_rate = 1
+        
         logging.info(f"Created clique graph with {len(positioned_nodes)} nodes and {edge_count} edges based on net connectivity")
+        logging.info(f"Processed {total_nets} nets, ignored {ignored_nets} nets with 20+ pins")
+        logging.info(f"Node inclusion rate: {node_inclusion_rate:.2f}% ({len(positioned_nodes)}/{len(positioned_nodes)})")
+        logging.info(f"Net inclusion rate: {net_inclusion_rate:.2f}% ({included_nets}/{total_nets})")
         logging.info(f"Edge weights represent Manhattan distances between connected components")
         if self.timing_features:
             logging.info(f"Included timing features (cap, slew, delay) for {len(self.timing_features)} nodes")
@@ -975,7 +934,6 @@ class TPGNN:
         converter = NetworkXToPyGConverter()
         data = converter.convert_graph(G)
         data = data.to(self.device)
-        logging.info(f"Converted graph: {data.num_nodes} nodes, {data.edge_index.size(1)} edges")
         
         # Step 2: Initialize components following TP-GNN paper parameters
         model = TPGNNModel(input_dim=data.x.size(1))
@@ -1007,11 +965,6 @@ class TPGNN:
             if epoch % 10 == 0:
                 logging.info(f"Epoch {epoch}: Contrastive Loss = {losses['contrastive_loss']:.4f}, LR = {current_lr:.6f}")
         
-        # Step 5: Final evaluation (embedding quality)
-        logging.info("Performing final evaluation...")
-        eval_metrics = trainer.evaluate(data)
-        logging.info(f"Final evaluation metrics: {eval_metrics}")
-        
         # Step 6: Generate final embeddings
         model.eval()
         with torch.no_grad():
@@ -1020,7 +973,6 @@ class TPGNN:
         # Step 7: Save results
         results = {
             'training_losses': training_losses,
-            'eval_metrics': eval_metrics,
             'final_embeddings': final_embeddings.cpu().numpy(),
             'node_names': data.node_names
         }
@@ -1329,9 +1281,12 @@ if __name__ == "__main__":
     @brief main function to test TP-GNN pipeline.
     """
     logging.root.name = 'TPGNN'
+    case_name = sys.argv[1].split("/")[-1].split(".")[0]
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
-                        stream=sys.stdout)
+                        # stream=sys.stdout)
+                        filename=f'./tpgnn_results/{case_name}/placement_3D.log',
+                        filemode='w')
     
     params = Params.Params()
     params.printWelcome()
@@ -1372,30 +1327,15 @@ if __name__ == "__main__":
     # Build clique graph
     G_base = tpgnn.clique_graph_construction()
     
-    # Print basic statistics of original graph
-    print(f"\n=== Original Graph Statistics ===")
-    print(f"Nodes: {G_base.number_of_nodes()}")
-    print(f"Edges: {G_base.number_of_edges()}")
-    
     # Apply hierarchy-aware edge contraction
     G_contracted = tpgnn.hierarchy_aware_graph_construction(G_base)
-    
-    # Print basic statistics of contracted graph
-    print(f"\n=== Contracted Graph Statistics ===")
-    print(f"Nodes: {G_contracted.number_of_nodes()}")
-    print(f"Edges: {G_contracted.number_of_edges()}")
-    print(f"Contraction ratio: {G_contracted.number_of_nodes() / G_base.number_of_nodes():.2f}")
-    
-    if G_base.number_of_edges() > 0:
-        edge_weights = [data['weight'] for _, _, data in G_base.edges(data=True)]
-        print(f"Edge weights - Min: {min(edge_weights):.2f}, Max: {max(edge_weights):.2f}, Avg: {np.mean(edge_weights):.2f}")
     
     print(f"\n=== Running TP-GNN ===")
     
     # Use the contracted graph for TP-GNN training (smaller and more manageable)
     tpgnn_model, tpgnn_results = tpgnn.generate_embeddings(G_contracted, 
-                                           output_dir="./tpgnn_results", 
-                                           epochs=1,
+                                           output_dir=f"./tpgnn_results/{case_name}", 
+                                           epochs=5,
                                            initial_lr=0.001,
                                            lr_decay_factor=0.95,
                                            lr_decay_patience=5)
@@ -1407,11 +1347,11 @@ if __name__ == "__main__":
         # Create is_macro array based on area threshold
         np.array([G_contracted.nodes[node_id].get('area', 0) > 1000 
                     for node_id in G_contracted.nodes()]),
-        output_dir="./tpgnn_results"
+        output_dir=f"./tpgnn_results/{case_name}"
     )
     
     # Plot and save training losses
-    tpgnn.plot_training_losses(tpgnn_results['training_losses'], output_dir="./tpgnn_results")
+    tpgnn.plot_training_losses(tpgnn_results['training_losses'], output_dir=f"./tpgnn_results/{case_name}")
     
     print(f"TP-GNN training completed successfully!")
     print(f"Final contrastive loss: {tpgnn_results['training_losses'][-1]['contrastive_loss']:.4f}")
@@ -1423,8 +1363,7 @@ if __name__ == "__main__":
         G_base,
         G_contracted, 
         tpgnn_results['final_embeddings'], 
-        tpgnn_results['node_names'],
-        output_dir="./tpgnn_results"
+        output_dir=f"./tpgnn_results/{case_name}"
     )
     
     # Print final summary
@@ -1434,6 +1373,6 @@ if __name__ == "__main__":
     print(f"Nodes in bottom die: {len(bottom_die_node_ids)}")
     print(f"Macros in upper die: {len(upper_die_macro_names)}")
     print(f"Upper die macro names: {upper_die_macro_names}")
-    print(f"Partition results saved to: ./tpgnn_results/partition_results.npy")
+    print(f"Partition results saved to: ./tpgnn_results/{case_name}/partition_results.npy")
     
     logging.info("Total execution time: %.3f seconds" % (time.time() - tt))

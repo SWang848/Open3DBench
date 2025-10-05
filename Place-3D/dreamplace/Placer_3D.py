@@ -23,6 +23,7 @@ import Timer
 import NonLinearPlace
 import pdb
 import re
+import copy
 import torch
 import random
 
@@ -360,27 +361,42 @@ if __name__ == "__main__":
     @brief main function to invoke the entire placement flow.
     """
     logging.root.name = 'DREAMPlace'
+    case_name = sys.argv[1].split("/")[-1].split(".")[0]
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
                         # stream=sys.stdout)
-                        filename='placement_3D_ariane133.log',
+                        filename=f'./tpgnn_results/{case_name}/placement_3D.log',
                         filemode='w')
     
-    TPGNN_flag = False
     params = Params.Params()
     seed_everything(params.random_seed)
     params.printWelcome()
+
     if len(sys.argv) == 1 or '-h' in sys.argv[1:] or '--help' in sys.argv[1:]:
         params.printHelp()
         exit()
-    elif len(sys.argv) != 2:
-        logging.error("One input parameters in json format in required")
+    elif len(sys.argv) < 2 or len(sys.argv) > 3:
+        logging.error("One or two input parameters required: json_file tpgnn_flag=False")
         params.printHelp()
         exit()
 
     # load parameters
     params.load(sys.argv[1])
+    
+    # Handle optional third parameter (boolean)
+    tpgnn_flag = False  # Default value
+    if len(sys.argv) == 3:
+        # Parse the third parameter as boolean
+        tpgnn_flag = sys.argv[2].lower()
+        if tpgnn_flag in ['true', '1', 'yes', 'on']:
+            tpgnn_flag = True
+        elif tpgnn_flag in ['false', '0', 'no', 'off']:
+            tpgnn_flag = False
+        else:
+            logging.error("tpgnn_flag must be a boolean value (true/false, 1/0, yes/no)")
+            exit()
     logging.info("parameters = %s" % (params))
+    logging.info("tpgnn_flag = %s" % (tpgnn_flag))
     # control numpy multithreading
     os.environ["OMP_NUM_THREADS"] = "%d" % (params.num_threads)
 
@@ -424,10 +440,12 @@ if __name__ == "__main__":
         
     if params.partition_params["type"] == 2:
         # run partition
-        if TPGNN_flag:
+        if tpgnn_flag:
             # Initialize placement database
             placedb = PlaceDB.PlaceDB()
-            placedb(params)
+            # dreamplace will change some parameters, like the macro place flag! so we need to copy the parameters
+            params_copy = copy.deepcopy(params)
+            placedb(params_copy)
             
             # Initialize TPGNN with placement database
             tpgnn = TPGNN(placedb)
@@ -442,27 +460,42 @@ if __name__ == "__main__":
             # Apply hierarchy-aware edge contraction
             G_contracted = tpgnn.hierarchy_aware_graph_construction(G)
             
-            # # reset the def_input to the original def file
-            # reorder_nodes(params)
-            
-            
             # Generate embeddings using TP-GNN
             tpgnn_model, tpgnn_results = tpgnn.generate_embeddings(G_contracted, 
-                                           output_dir="./tpgnn_results", 
-                                           epochs=1)
+                                           output_dir=f"./tpgnn_results/{case_name}",
+                                           epochs=5,
+                                           initial_lr=0.001,
+                                           lr_decay_factor=0.95,
+                                           lr_decay_patience=5)
+            
+            # Analyze the embeddings
+            tpgnn.analyze_gnn_embeddings(
+                tpgnn_results['final_embeddings'],
+                tpgnn_results['node_names'],
+                # Create is_macro array based on area threshold
+                np.array([G_contracted.nodes[node_id].get('area', 0) > 1000 
+                            for node_id in G_contracted.nodes()]),
+                output_dir=f"./tpgnn_results/{case_name}"
+            )
+            
+            # Plot and save training losses
+            tpgnn.plot_training_losses(tpgnn_results['training_losses'], output_dir=f"./tpgnn_results/{case_name}")
+    
             
             # Run partitioning using GNN embeddings
             partition_result, upper_die_names = tpgnn.partition(
                 G,
                 G_contracted,
                 tpgnn_results['final_embeddings'],
-                output_dir="./tpgnn_results"
+                output_dir=f"./tpgnn_results/{case_name}"
             )
             
+            logging.info("Total execution time: %.3f seconds" % (time.time() - tt))
             # update partition result based on the clear def file
             placedb = PlaceDB.PlaceDB()
             params.placed_def_input = ""
             placedb(params)
+            
             partition_result = []
             for name in placedb.node_names:
                 name = name.decode('utf-8')
@@ -472,15 +505,14 @@ if __name__ == "__main__":
                         continue
                     else:
                         partition_result.append(node)
-            
         else:
             params.placed_def_input = ""
             partition_result, upper_die_names = partition(params)
         
         tt = time.time()
         params.plot_flag = 0
+
         place(params, partition_result, choice="mem-upper")
-        # breakpoint()
         logging.info("mem-upper placement takes %.3f seconds" % (time.time() - tt))
         
         # run 2D placement for memory placement
@@ -490,7 +522,6 @@ if __name__ == "__main__":
         # params.target_density = 0.4
         params.def_input = "benchmarks/or_3D/intermediate_result/mem_upper.def"
         place(params, partition_result, choice="mem-bottom")
-        
         logging.info("mem-bottom placement takes %.3f seconds" % (time.time() - tt))
         
         # run bottom die placement
