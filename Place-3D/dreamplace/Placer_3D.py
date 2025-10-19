@@ -362,6 +362,9 @@ if __name__ == "__main__":
     """
     logging.root.name = 'DREAMPlace'
     case_name = sys.argv[1].split("/")[-1].split(".")[0]
+    out_dir = f"./tpgnn_results/{case_name}"
+    os.makedirs(out_dir, exist_ok=True)
+    
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
                         # stream=sys.stdout)
@@ -441,6 +444,7 @@ if __name__ == "__main__":
     if params.partition_params["type"] == 2:
         # run partition
         if tpgnn_flag:
+            tt = time.time()
             # Initialize placement database
             placedb = PlaceDB.PlaceDB()
             # dreamplace will change some parameters, like the macro place flag! so we need to copy the parameters
@@ -463,7 +467,7 @@ if __name__ == "__main__":
             # Generate embeddings using TP-GNN
             tpgnn_model, tpgnn_results = tpgnn.generate_embeddings(G_contracted, 
                                            output_dir=f"./tpgnn_results/{case_name}",
-                                           epochs=5,
+                                           epochs=40,
                                            initial_lr=0.001,
                                            lr_decay_factor=0.95,
                                            lr_decay_patience=5)

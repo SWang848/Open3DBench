@@ -52,6 +52,8 @@
              ],
 "def_input" : "benchmarks/or_3D/swerv_wrapper/2_2_floorplan_io.def",
 "verilog_input" : "benchmarks/or_3D/swerv_wrapper/swerv_wrapper_3D.v",
+"timing_report_input" : "results/swerv_wrapper_2D/post_place_timing_setup.rpt",
+"placed_def_input" : "results/swerv_wrapper_2D/swerv_wrapper_2D.gp.def",
 "gpu" : 1,
 "num_bins_x" : 1024,
 "num_bins_y" : 1024,

@@ -52,6 +52,8 @@
              ],
 "def_input" : "benchmarks/or/tinyRocket/3D/2_2_floorplan_io.def",
 "verilog_input" : "benchmarks/or/tinyRocket/tinyRocket_3D.v",
+"timing_report_input" : "results/tinyRocket_2D/post_place_timing_setup.rpt",
+"placed_def_input" : "results/tinyRocket_2D/tinyRocket_2D.gp.def",
 "gpu" : 2,
 "num_bins_x" : 1024,
 "num_bins_y" : 1024,

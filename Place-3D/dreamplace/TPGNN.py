@@ -1114,6 +1114,9 @@ class TPGNN:
             plt.grid(True, alpha=0.3)
             plt.legend()
             
+            # Set x-axis to show only integer values for epochs
+            plt.gca().xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+            
             # Add some styling
             plt.tight_layout()
             
