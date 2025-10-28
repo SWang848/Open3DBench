@@ -8,6 +8,11 @@ import math
 import time
 from itertools import combinations
 import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.preprocessing import minmax_scale
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+from scipy.spatial import distance
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
@@ -68,7 +73,9 @@ def graph_construction(db):
         G.add_edge(edge[0], edge[1])
     return G
 
-def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]], save_path: str = "./pareto_front.png") -> None:
+def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]], 
+                      save_path: str = "./pareto_front.png",
+                      candidates: Optional[List[Tuple]] = None) -> None:
         """
         Plots the Pareto front showing the trade-off between cutsize and imbalance.
         
@@ -76,6 +83,8 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
             pareto_archive_grid: Dictionary with keys (cell_x, cell_y) and values (cost, solution)
                                  where cost is (cutsize, imbalance)
             save_path: Path to save the plot image
+            candidates: Optional list of selected candidate points from candidate_selection function
+                       Each candidate is a tuple (grid_key, cost, solution, normalized_cost)
         """
         
         # Extract cutsize and imbalance from pareto archive grid values
@@ -84,20 +93,31 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
         
         # Create the plot
         plt.figure(figsize=(10, 6))
-        plt.scatter(cutsizes, imbalances, c='blue', s=100, alpha=0.6, edgecolors='black', linewidths=1.5)
+        plt.scatter(cutsizes, imbalances, c='blue', s=100, alpha=0.6, edgecolors='black', linewidths=1.5, label='All Solutions')
+        
+        # Plot candidate points in red if provided
+        if candidates is not None and len(candidates) > 0:
+            candidate_cutsizes = [point[1][0] for point in candidates]  # point[1] is cost tuple
+            candidate_imbalances = [point[1][1] for point in candidates]
+            plt.scatter(candidate_cutsizes, candidate_imbalances, c='red', s=150, alpha=0.8, 
+                       edgecolors='darkred', linewidths=2, marker='*', label='Selected Candidates', zorder=5)
         
         # Sort points for connecting line
         sorted_points = sorted(zip(cutsizes, imbalances))
         sorted_cutsizes, sorted_imbalances = zip(*sorted_points)
-        plt.plot(sorted_cutsizes, sorted_imbalances, 'r--', alpha=0.5, linewidth=1)
+        plt.plot(sorted_cutsizes, sorted_imbalances, 'gray', linestyle='--', alpha=0.3, linewidth=1)
         
         plt.xlabel('Cutsize', fontsize=12, fontweight='bold')
         plt.ylabel('Imbalance', fontsize=12, fontweight='bold')
         plt.title('Grid-based Pareto Front: Cutsize vs Imbalance', fontsize=14, fontweight='bold')
         plt.grid(True, alpha=0.3)
+        plt.legend(loc='upper right', fontsize=10)
         
         # Add annotation for number of solutions
-        plt.text(0.02, 0.98, f'Solutions: {len(pareto_archive_grid)}', 
+        annotation_text = f'Total Solutions: {len(pareto_archive_grid)}'
+        if candidates is not None:
+            annotation_text += f'\nCandidates: {len(candidates)}'
+        plt.text(0.02, 0.98, annotation_text, 
                 transform=plt.gca().transAxes, 
                 fontsize=10, 
                 verticalalignment='top',
@@ -107,6 +127,107 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         logging.info(f"Pareto front plot saved to '{save_path}'")
         plt.close()
+
+def candidate_selection(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]],
+                        budget: int = 10,
+                        front_ratio: float = 0.4,
+                        side_percentile: float = 0.1) -> Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]]:
+    """
+    Selects a set of candidates from the grid archive by adaptively filtering the sides and sampling the knee and dominated cloud.
+    """
+    
+    def _find_pareto_front(points_data: List[tuple]) -> List[tuple]:
+        front = []
+        for p1_data in points_data:
+            is_dominated = False
+            p1_cost = p1_data[1] # (cutsize, imbalance)
+            
+            for p2_data in points_data:
+                if p1_data == p2_data: continue
+                p2_cost = p2_data[1]
+                if p1_cost[0] >= p2_cost[0] and p1_cost[1] >= p2_cost[1]:
+                    is_dominated = True
+                    break
+            
+            if not is_dominated:
+                front.append(p1_data)
+        return front
+    
+    all_data_points = []
+    for grid_key, (cost, solution) in pareto_archive_grid.items():
+        all_data_points.append((grid_key, cost, solution))
+    
+    if len(all_data_points) <= budget:
+        print("Not enough data points to select candidates")
+        return pareto_archive_grid
+    
+    points_with_norm = []
+    costs = np.array([point[1] for point in all_data_points])
+    normalized_costs = minmax_scale(costs, feature_range=(0, 1))
+    
+    for i, data in enumerate(all_data_points):
+        points_with_norm.append((data[0], data[1], data[2], normalized_costs[i]))
+    
+    knee_points = []
+    side_points = []
+    
+    for point in points_with_norm:
+        norm_cost = point[3]
+        is_side_point = False
+        
+        if norm_cost[0] <= side_percentile and norm_cost[1] >= (1 - side_percentile):
+            is_side_point = True
+        
+        if norm_cost[1] <= side_percentile and norm_cost[0] >= (1 - side_percentile):
+            is_side_point = True
+        
+        if is_side_point:
+            side_points.append(point)
+        else:
+            knee_points.append(point)
+        
+    knee_front = _find_pareto_front(knee_points)
+    knee_cloud = [point for point in knee_points if point not in knee_front]
+    
+    budget_front = int(budget * front_ratio)
+    final_candidates_data = []
+    
+    # sample the front points
+    if len(knee_front) > 0:
+        front_norm_costs = np.array([point[3] for point in knee_front])
+        n_front_clusters = min(budget_front, len(knee_front))
+        
+        kmeans_front = KMeans(n_clusters=n_front_clusters, random_state=0, n_init=10).fit(front_norm_costs)
+        centroids_front = kmeans_front.cluster_centers_
+        
+        for i in range(n_front_clusters):
+            cluster_points_indices = np.where(kmeans_front.labels_ == i)[0]
+            if len(cluster_points_indices) == 0: continue
+            
+            centroid = centroids_front[i]
+            distances = distance.cdist([centroid], front_norm_costs[cluster_points_indices])
+            closest_point_idx = cluster_points_indices[distances.argmin()]
+            final_candidates_data.append(knee_front[closest_point_idx])
+    
+    # sample the cloud points
+    remaining_budget = budget - len(final_candidates_data)
+    if len(knee_cloud) > 0 and remaining_budget > 0:
+        cloud_norm_costs = np.array([point[3] for point in knee_cloud])
+        n_cloud_clusters = min(remaining_budget, len(knee_cloud))
+        
+        kmeans_cloud = KMeans(n_clusters=n_cloud_clusters, random_state=0, n_init=10).fit(cloud_norm_costs)
+        centroids_cloud = kmeans_cloud.cluster_centers_
+        
+        for i in range(n_cloud_clusters):
+            cluster_points_indices = np.where(kmeans_cloud.labels_ == i)[0]
+            if len(cluster_points_indices) == 0: continue
+            
+            centroid = centroids_cloud[i]
+            distances = distance.cdist([centroid], cloud_norm_costs[cluster_points_indices])
+            closest_point_idx = cluster_points_indices[distances.argmin()]
+            final_candidates_data.append(knee_cloud[closest_point_idx])
+    
+    return final_candidates_data
         
 class HierarchyNode:
     """
@@ -533,6 +654,9 @@ if __name__ == "__main__":
     pareto_archive = hmsa.run_annealing()
     print([(key, value[0]) for key, value in pareto_archive.items()])
     
-    # Plot and save the Pareto front
+    # Select candidates from Pareto archive
+    candidates = candidate_selection(pareto_archive)
+   
+    # Plot and save the Pareto front with candidates highlighted
     pareto_plot_path = os.path.join(out_dir, "pareto_front.png")
-    plot_pareto_front(pareto_archive, pareto_plot_path)
+    plot_pareto_front(pareto_archive, pareto_plot_path, candidates)
