@@ -12,6 +12,8 @@ import sys
 import time
 import numpy as np
 import logging
+import argparse
+import json
 # for consistency between python2 and python3
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
@@ -29,6 +31,7 @@ import random
 
 from Partitioner import partition
 from TPGNN import TPGNN
+from HMSA import graph_construction
 
 def seed_everything(seed=2022):
     random.seed(seed)
@@ -38,6 +41,17 @@ def seed_everything(seed=2022):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.cuda.manual_seed_all(seed)
+    
+def create_and_write_log(path, filename, metrics):
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    file_path = os.path.join(path, filename)
+
+    with open(file_path, 'w') as file:
+        for item in metrics:
+            file.write(f"{item}\n")
 
 def place(params, partition_result=None, choice=None, upper_die_names=None):
     """
@@ -361,7 +375,25 @@ if __name__ == "__main__":
     @brief main function to invoke the entire placement flow.
     """
     logging.root.name = 'DREAMPlace'
-    case_name = sys.argv[1].split("/")[-1].split(".")[0]
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='DREAMPlace 3D Placement with optional TPGNN or HMSA')
+    parser.add_argument('json_file', type=str, help='Path to the JSON configuration file')
+    parser.add_argument('--tpgnn', type=str, default='false', 
+                        choices=['true', 'false', '1', '0', 'yes', 'no', 'on', 'off'],
+                        help='Enable TPGNN mode (default: false)')
+    parser.add_argument('--hmsa', type=str, default='false',
+                        choices=['true', 'false', '1', '0', 'yes', 'no', 'on', 'off'],
+                        help='Enable HMSA mode (default: false)')
+    
+    args = parser.parse_args()
+    
+    # Convert string arguments to boolean
+    tpgnn_flag = args.tpgnn.lower() in ['true', '1', 'yes', 'on']
+    hmsa_flag = args.hmsa.lower() in ['true', '1', 'yes', 'on']
+    
+    # Extract case name from JSON file path
+    case_name = args.json_file.split("/")[-1].split(".")[0]
     out_dir = f"./tpgnn_results/{case_name}"
     os.makedirs(out_dir, exist_ok=True)
     
@@ -375,31 +407,12 @@ if __name__ == "__main__":
     seed_everything(params.random_seed)
     params.printWelcome()
 
-    if len(sys.argv) == 1 or '-h' in sys.argv[1:] or '--help' in sys.argv[1:]:
-        params.printHelp()
-        exit()
-    elif len(sys.argv) < 2 or len(sys.argv) > 3:
-        logging.error("One or two input parameters required: json_file tpgnn_flag=False")
-        params.printHelp()
-        exit()
-
     # load parameters
-    params.load(sys.argv[1])
+    params.load(args.json_file)
     
-    # Handle optional third parameter (boolean)
-    tpgnn_flag = False  # Default value
-    if len(sys.argv) == 3:
-        # Parse the third parameter as boolean
-        tpgnn_flag = sys.argv[2].lower()
-        if tpgnn_flag in ['true', '1', 'yes', 'on']:
-            tpgnn_flag = True
-        elif tpgnn_flag in ['false', '0', 'no', 'off']:
-            tpgnn_flag = False
-        else:
-            logging.error("tpgnn_flag must be a boolean value (true/false, 1/0, yes/no)")
-            exit()
     logging.info("parameters = %s" % (params))
     logging.info("tpgnn_flag = %s" % (tpgnn_flag))
+    logging.info("hmsa_flag = %s" % (hmsa_flag))
     # control numpy multithreading
     os.environ["OMP_NUM_THREADS"] = "%d" % (params.num_threads)
 
@@ -509,14 +522,38 @@ if __name__ == "__main__":
                         continue
                     else:
                         partition_result.append(node)
+        elif hmsa_flag:
+            tt = time.time()
+            placedb = PlaceDB.PlaceDB()
+            params.placed_def_input = ""
+            placedb(params)
+            with open(f"./hmsa_results/{case_name}/hmsa_results.json", 'r') as f:
+                solutions = json.load(f)
+
+            candidates = solutions['candidates']['solutions']
+            selected_key = list(candidates.keys())[9]
+            selected_candidate = candidates[selected_key]
+            solution = selected_candidate['solution']
+            upper_die_node_ids = solution[1]
+            upper_die_names = []
+            partition_result = []
+            for node_id in upper_die_node_ids:
+                node_name = placedb.node_names[node_id].decode('utf-8')
+                upper_die_names.append(node_name)
+            G = graph_construction(placedb)
+            partition_result = G.nodes - upper_die_node_ids
         else:
             params.placed_def_input = ""
+            tt = time.time()
             partition_result, upper_die_names = partition(params)
+            logging.info("Partitioning takes %.3f seconds" % (time.time() - tt))
         
         tt = time.time()
         params.plot_flag = 0
 
-        place(params, partition_result, choice="mem-upper")
+        metrics = place(params, partition_result, choice="mem-upper")
+        path = "%s/%s/" % (params.result_dir, params.design_name())
+        create_and_write_log(path, "log_upper", metrics)
         logging.info("mem-upper placement takes %.3f seconds" % (time.time() - tt))
         
         # run 2D placement for memory placement
@@ -525,7 +562,10 @@ if __name__ == "__main__":
         # params.enable_fillers = 1
         # params.target_density = 0.4
         params.def_input = "benchmarks/or_3D/intermediate_result/mem_upper.def"
-        place(params, partition_result, choice="mem-bottom")
+        metrics = place(params, partition_result, choice="mem-bottom")
+        path = "%s/%s/" % (params.result_dir, params.design_name())
+        create_and_write_log(path, "log_bottom", metrics)
+        
         logging.info("mem-bottom placement takes %.3f seconds" % (time.time() - tt))
         
         # run bottom die placement
@@ -533,7 +573,9 @@ if __name__ == "__main__":
         params.shrink['type'] = 4
         params.def_input = "benchmarks/or_3D/intermediate_result/mem_bot.def"
         params.plot_flag = 1
-        place(params, partition_result, choice="bot_die_placement", upper_die_names=upper_die_names)
+        metrics = place(params, partition_result, choice="bot_die_placement", upper_die_names=upper_die_names)
+        path = "%s/%s/" % (params.result_dir, params.design_name())
+        create_and_write_log(path, "log_bottom_all", metrics)
         
         logging.info("Bottom die placement takes %.3f seconds" % (time.time() - tt))
         
