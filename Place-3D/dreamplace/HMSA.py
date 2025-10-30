@@ -6,6 +6,8 @@ import random
 import logging
 import math
 import time
+import json
+import copy
 from itertools import combinations
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,7 +77,7 @@ def graph_construction(db):
 
 def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]], 
                       save_path: str = "./pareto_front.png",
-                      candidates: Optional[List[Tuple]] = None) -> None:
+                      candidates: Optional[Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]]] = None) -> None:
         """
         Plots the Pareto front showing the trade-off between cutsize and imbalance.
         
@@ -83,8 +85,8 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
             pareto_archive_grid: Dictionary with keys (cell_x, cell_y) and values (cost, solution)
                                  where cost is (cutsize, imbalance)
             save_path: Path to save the plot image
-            candidates: Optional list of selected candidate points from candidate_selection function
-                       Each candidate is a tuple (grid_key, cost, solution, normalized_cost)
+            candidates: Optional dictionary of selected candidate points from candidate_selection function
+                       Dictionary with same structure as pareto_archive_grid
         """
         
         # Extract cutsize and imbalance from pareto archive grid values
@@ -97,8 +99,8 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
         
         # Plot candidate points in red if provided
         if candidates is not None and len(candidates) > 0:
-            candidate_cutsizes = [point[1][0] for point in candidates]  # point[1] is cost tuple
-            candidate_imbalances = [point[1][1] for point in candidates]
+            candidate_cutsizes = [cost[0] for cost, _ in candidates.values()]
+            candidate_imbalances = [cost[1] for cost, _ in candidates.values()]
             plt.scatter(candidate_cutsizes, candidate_imbalances, c='red', s=150, alpha=0.8, 
                        edgecolors='darkred', linewidths=2, marker='*', label='Selected Candidates', zorder=5)
         
@@ -227,7 +229,9 @@ def candidate_selection(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[i
             closest_point_idx = cluster_points_indices[distances.argmin()]
             final_candidates_data.append(knee_cloud[closest_point_idx])
     
-    return final_candidates_data
+    # Convert list to dictionary format matching pareto_archive_grid structure
+    candidates_dict = {candidate[0]: (candidate[1], candidate[2]) for candidate in final_candidates_data}
+    return candidates_dict
         
 class HierarchyNode:
     """
@@ -531,9 +535,9 @@ class HMSA:
         if cell in self.pareto_archive_grid:
             existing_cost, _ = self.pareto_archive_grid[cell]
             if cost[0] <= existing_cost[0] and cost[1] <= existing_cost[1]:
-                self.pareto_archive_grid[cell] = (cost, solution)
+                self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
         else:  
-            self.pareto_archive_grid[cell] = (cost, solution)     
+            self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
     
     def _remap_pareto_archive(self) -> None:
         old_archive_grid = list(self.pareto_archive_grid.values())
@@ -656,6 +660,21 @@ if __name__ == "__main__":
     
     # Select candidates from Pareto archive
     candidates = candidate_selection(pareto_archive)
+    # Save both pareto_archive and candidates to a single file
+    results_path = os.path.join(out_dir, "hmsa_results.json")
+    results = {
+        "pareto_archive": {
+            "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
+            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
+        },
+        "candidates": {
+            "description": "Selected candidate solutions from the Pareto archive for further evaluation",
+            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in candidates.items()}
+        }
+    }
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
    
     # Plot and save the Pareto front with candidates highlighted
     pareto_plot_path = os.path.join(out_dir, "pareto_front.png")

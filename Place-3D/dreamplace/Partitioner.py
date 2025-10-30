@@ -82,8 +82,8 @@ def SA(G, current_cut, current_cut_size, areas, macros, seed=None, method='min_c
         return new_cut
     
     # initialization
-    T = 1
-    gamma = 0.9
+    T = 500
+    gamma = 0.95
     binary_cut = current_cut
     best_cut = current_cut[:]
     current_obj_1 = - current_cut_size if method == 'max_cut' else current_cut_size # min obj
@@ -97,32 +97,33 @@ def SA(G, current_cut, current_cut_size, areas, macros, seed=None, method='min_c
     print(best_cut)
     print("Cut size: {}, Area difference: {}, Upper-die area: {}, Bottom-die area: {} in iteration {}".format(best_obj_1, best_obj_2, areas["upper_area"], areas["bot_area"], i))
     # simulated annealing
-    while T > 0.1:
-        # mutation
-        new_binary_cut = mutation(binary_cut)
-        
-        # compute the change of objective function
-        new_cut_size = nx.algorithms.cut_size(G, macros[new_binary_cut])
-        new_areas = total_area(G, macros[new_binary_cut])
-        new_obj_1 = - new_cut_size if method == 'max_cut' else new_cut_size # min obj
-        new_obj_2 = np.abs(new_areas['upper_area'] - new_areas['bot_area'])
-        new_obj = new_obj_1 + lam * new_obj_2
-        # print(new_binary_cut)
-        # accept new solution
-        obj_delta = new_obj - current_obj
-        p = np.exp(-obj_delta / T)
-        # print(obj_delta, new_obj_1, new_obj_2, new_obj)
-        if obj_delta < 0 or (random.random() < p):
-            binary_cut = new_binary_cut
-            areas = new_areas
-            current_obj_1 = new_obj_1
-            current_obj_2 = new_obj_2
-            current_obj = new_obj
-            if new_obj < best_obj:
-                best_obj = new_obj
-                best_obj_1 = new_obj_1
-                best_obj_2 = new_obj_2
-                best_cut = new_binary_cut[:]
+    while T > 1:
+        for _ in range(100):
+            # mutation
+            new_binary_cut = mutation(binary_cut)
+            
+            # compute the change of objective function
+            new_cut_size = nx.algorithms.cut_size(G, macros[new_binary_cut])
+            new_areas = total_area(G, macros[new_binary_cut])
+            new_obj_1 = - new_cut_size if method == 'max_cut' else new_cut_size # min obj
+            new_obj_2 = np.abs(new_areas['upper_area'] - new_areas['bot_area'])
+            new_obj = new_obj_1 + lam * new_obj_2
+            # print(new_binary_cut)
+            # accept new solution
+            obj_delta = new_obj - current_obj
+            p = np.exp(-obj_delta / T)
+            # print(obj_delta, new_obj_1, new_obj_2, new_obj)
+            if obj_delta < 0 or (random.random() < p):
+                binary_cut = new_binary_cut
+                areas = new_areas
+                current_obj_1 = new_obj_1
+                current_obj_2 = new_obj_2
+                current_obj = new_obj
+                if new_obj < best_obj:
+                    best_obj = new_obj
+                    best_obj_1 = new_obj_1
+                    best_obj_2 = new_obj_2
+                    best_cut = new_binary_cut[:]
             
         T = T * gamma
         i += 1
