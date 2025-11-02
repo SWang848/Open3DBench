@@ -372,7 +372,7 @@ class HierarchyTree:
             print(f"\nError saving ASCII tree to '{save_path}': {e}")    
 
 class HMSA:
-    def __init__(self, G:nx.MultiGraph, placedb: PlaceDB, grid_size: int=40) -> None:
+    def __init__(self, G:nx.MultiGraph, placedb: PlaceDB, grid_size: int=40, def_file_path: str=None) -> None:
         self.G: nx.MultiGraph = G
         self.placedb: PlaceDB = placedb
         self.hierarchy_tree: HierarchyTree = HierarchyTree(placedb)
@@ -384,7 +384,10 @@ class HMSA:
         self.current_solution = [[], []] # [bottom_die_macros_ids, upper_die_macros_ids]
         self.pareto_archive_grid = {} # keys: (cell_x, cell_y), values: (cost, solution)
         self.grid_size = grid_size
-        self._initial_partition()
+        if def_file_path is not None:
+            self.read_partition_result(def_file_path)
+        else:
+            self._initial_partition()
 
         self.current_total_cutsize = self._calculate_initial_cutsize()
         self.current_imbalance = self._get_imbalance_metric()
@@ -395,7 +398,41 @@ class HMSA:
             'log_imbalance': {'min': log_imbalance, 'max': log_imbalance}
         }
         self._update_pareto_archive((self.current_total_cutsize, self.current_imbalance), self.current_solution)
+    
+    def read_partition_result(self, def_file_path: str):
+        upper_macros_ids = []
+        partitions = {}
+        indicator = False
         
+        with open(def_file_path, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                if 'COMPONENTS' in line:
+                    indicator = True
+                    if 'END' in line:
+                        indicator = False
+                
+                if indicator:
+                    if 'fakeram' in line and 'upper' in line:
+                        name = line.split()[1]
+                        node_id = self.placedb.node_name2id_map[name]
+                        upper_macros_ids.append(node_id)
+        
+        for node_id in self.G.nodes():
+            node_area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
+            if self.G.nodes[node_id].get('is_macro'):
+                if node_id in upper_macros_ids:
+                    partitions[node_id] = {'partition': UPPER_DIE}
+                    self.current_area_balance[UPPER_DIE] += node_area
+                    self.current_solution[UPPER_DIE].append(node_id)
+                else:
+                    partitions[node_id] = {'partition': BOTTOM_DIE}
+                    self.current_area_balance[BOTTOM_DIE] += node_area
+                    self.current_solution[BOTTOM_DIE].append(node_id)
+            else:
+                self.current_area_balance[BOTTOM_DIE] += node_area
+        nx.set_node_attributes(self.G, partitions)
+                            
     def _initial_partition(self):
         partitions = {}
         for node_id in self.G.nodes():
@@ -544,6 +581,43 @@ class HMSA:
         self.pareto_archive_grid = {}
         for cost, solution in old_archive_grid:
             self._update_pareto_archive(cost, solution)
+    
+    def reset_state_from_solution(self, solution: List[List[int]]) -> None:
+        """
+        Re-initialize current state (partitions, balances, cutsize, imbalance) from a given solution
+        while preserving the existing pareto archive and normalization bounds.
+        """
+        partitions: Dict[int, Dict[str, int]] = {}
+        self.current_solution = [[], []]
+        self.current_area_balance = [0.0, 0.0]
+        
+        bottom_ids: List[int] = solution[BOTTOM_DIE]
+        upper_ids: List[int] = solution[UPPER_DIE]
+        bottom_set = set(bottom_ids)
+        upper_set = set(upper_ids)
+        
+        for node_id in self.G.nodes():
+            node_area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
+            if self.G.nodes[node_id].get('is_macro'):
+                if node_id in upper_set:
+                    partitions[node_id] = {'partition': UPPER_DIE}
+                    self.current_area_balance[UPPER_DIE] += node_area
+                    self.current_solution[UPPER_DIE].append(node_id)
+                else:
+                    partitions[node_id] = {'partition': BOTTOM_DIE}
+                    self.current_area_balance[BOTTOM_DIE] += node_area
+                    self.current_solution[BOTTOM_DIE].append(node_id)
+            else:
+                # std cells count toward bottom die area balance in current formulation
+                self.current_area_balance[BOTTOM_DIE] += node_area
+        
+        nx.set_node_attributes(self.G, partitions)
+        
+        # Update current metrics and archive without clearing existing solutions
+        self.current_total_cutsize = self._calculate_initial_cutsize()
+        self.current_imbalance = self._get_imbalance_metric()
+        self._update_norm_bounds(self.current_total_cutsize, self.current_imbalance)
+        self._update_pareto_archive((self.current_total_cutsize, self.current_imbalance), self.current_solution)
             
     def run_annealing(self, T_max=500, T_min=0.1, gamma=0.95, steps_per_T=100) -> None:
         T = T_max
@@ -628,10 +702,14 @@ if __name__ == "__main__":
     
     if len(sys.argv) == 1 or '-h' in sys.argv[1:] or '--help' in sys.argv[1:]:
         params.printHelp()
+        print("\nAdditional arguments:")
+        print("  def_file    (optional) Path to DEF file with initial partition")
         exit()
-    elif len(sys.argv) != 2:
-        logging.error("One input parameter in json format is required")
+    elif len(sys.argv) < 2 or len(sys.argv) > 3:
+        logging.error("Usage: python HMSA.py <params.json> [def_file]")
         params.printHelp()
+        print("\nAdditional arguments:")
+        print("  def_file    (optional) Path to DEF file with initial partition")
         exit()
     
     case_name = sys.argv[1].split("/")[-1].split(".")[0]
@@ -640,6 +718,11 @@ if __name__ == "__main__":
 
     # load parameters
     params.load(sys.argv[1])
+    
+    # Get optional def_file argument
+    def_file = sys.argv[2] if len(sys.argv) == 3 else None
+    if def_file:
+        logging.info(f"Using initial partition from DEF file: {def_file}")
     params.placed_def_input = ""
     logging.info("parameters loaded successfully")
     
@@ -654,12 +737,27 @@ if __name__ == "__main__":
     logging.info(f"Found {placedb.num_physical_nodes - placedb.num_terminal_NIs} positioned components")
     
     G = graph_construction(placedb)
-    hmsa = HMSA(G, placedb)
+    hmsa = HMSA(G, placedb, def_file_path=def_file)
     pareto_archive = hmsa.run_annealing()
-    print([(key, value[0]) for key, value in pareto_archive.items()])
     
-    # Select candidates from Pareto archive
+    # First-round candidates
     candidates = candidate_selection(pareto_archive)
+    
+    # Refinement phase: keep archive, reinitialize from each candidate, run at low temperature
+    refine_T_max = 1.0
+    refine_T_min = 0.05
+    refine_gamma = 0.9
+    refine_steps = 400
+    for _, val in candidates.items():
+        _, solution = val
+        hmsa.reset_state_from_solution(solution)
+        hmsa.run_annealing(T_max=refine_T_max, T_min=refine_T_min, gamma=refine_gamma, steps_per_T=refine_steps)
+    
+    # Update archive and candidates after refinement
+    pareto_archive = hmsa.pareto_archive_grid
+    candidates = candidate_selection(pareto_archive)
+    print([(key, value[0]) for key, value in pareto_archive.items()])
+    print(time.time() - tt)
     # Save both pareto_archive and candidates to a single file
     results_path = os.path.join(out_dir, "hmsa_results.json")
     results = {

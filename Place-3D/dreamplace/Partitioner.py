@@ -97,7 +97,7 @@ def SA(G, current_cut, current_cut_size, areas, macros, seed=None, method='min_c
     print(best_cut)
     print("Cut size: {}, Area difference: {}, Upper-die area: {}, Bottom-die area: {} in iteration {}".format(best_obj_1, best_obj_2, areas["upper_area"], areas["bot_area"], i))
     # simulated annealing
-    while T > 1:
+    while T > 0.1:
         for _ in range(100):
             # mutation
             new_binary_cut = mutation(binary_cut)
