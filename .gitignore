@@ -56,7 +56,9 @@ tpgnn_results/
 benchmarks/
 openroad_temp_save/
 HMSA_temp_results/
-
+HMSA_solution_eval/*
+!HMSA_solution_eval/**/*.py
+!HMSA_solution_eval/*.py
 # OpenROAD flow outputs
 OpenROAD-3D/flow/logs/
 OpenROAD-3D/flow/reports/
