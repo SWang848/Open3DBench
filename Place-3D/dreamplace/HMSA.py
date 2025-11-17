@@ -619,10 +619,60 @@ class HMSA:
         self._update_norm_bounds(self.current_total_cutsize, self.current_imbalance)
         self._update_pareto_archive((self.current_total_cutsize, self.current_imbalance), self.current_solution)
             
-    def run_annealing(self, T_max=500, T_min=0.1, gamma=0.95, steps_per_T=100) -> None:
+    def _snapshot_state(
+        self,
+        solution: List[List[int]],
+        cut: int,
+        imbalance: float,
+        accepted: bool,
+        temperature: float,
+    ) -> Dict[str, Any]:
+        return {
+            "cost": [
+                int(cut),
+                float(imbalance),
+            ],
+            "solution": [
+                copy.deepcopy(solution[BOTTOM_DIE]),
+                copy.deepcopy(solution[UPPER_DIE]),
+            ],
+            "accepted": bool(accepted),
+            "temperature": float(temperature),
+        }
+    
+    def _build_candidate_solution(
+        self,
+        node_to_move: HierarchyNode,
+        from_part: int,
+        to_part: int,
+    ) -> List[List[int]]:
+        candidate_solution = [
+            copy.deepcopy(self.current_solution[BOTTOM_DIE]),
+            copy.deepcopy(self.current_solution[UPPER_DIE]),
+        ]
+        leaf_macro_ids = [leaf.node_id for leaf in node_to_move.get_all_leaf_descendants()]
+        for macro_id in leaf_macro_ids:
+            if macro_id in candidate_solution[from_part]:
+                candidate_solution[from_part].remove(macro_id)
+            if macro_id not in candidate_solution[to_part]:
+                candidate_solution[to_part].append(macro_id)
+        return candidate_solution
+    
+    def run_annealing(self, T_max=500, T_min=0.1, gamma=0.95, steps_per_T=100, history: Optional[List[Dict[str, Any]]] = None) -> None:
         T = T_max
         available_levels = sorted(self.nodes_by_level.keys())
     
+        if history is not None:
+            history.append(
+                self._snapshot_state(
+                    solution=self.current_solution,
+                    cut=self.current_total_cutsize,
+                    imbalance=self.current_imbalance,
+                    accepted=True,
+                    temperature=T,
+                )
+            )
+
         while T > T_min:
             for _ in range(steps_per_T):
                 temp_ratio = (T - T_min) / (T_max - T_min)
@@ -680,12 +730,41 @@ class HMSA:
                     if math.exp(-delta_cost / norm_temp) > random.random():
                         accept = True
                         
+                candidate_solution = self._build_candidate_solution(node_to_move, from_part, to_part)
+                if history is not None:
+                    history.append(
+                        self._snapshot_state(
+                            solution=candidate_solution,
+                            cut=new_cut,
+                            imbalance=new_imbalance,
+                            accepted=accept,
+                            temperature=T,
+                        )
+                    )
+
                 if accept:
                     self.commit_move(node_to_move, delta_cut, delta_area)
                     self._update_pareto_archive((new_cut, new_imbalance), self.current_solution)
             T = T * gamma
         return self.pareto_archive_grid
     
+    def generate_regression_dataset(
+        self,
+        output_path: str,
+        T_max: float = 500,
+        T_min: float = 0.1,
+        gamma: float = 0.95,
+        steps_per_T: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        history: List[Dict[str, Any]] = []
+        self.run_annealing(T_max=T_max, T_min=T_min, gamma=gamma, steps_per_T=steps_per_T, history=history)
+        out_dir = os.path.dirname(output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(output_path, "w") as fp:
+            json.dump(history, fp, indent=2)
+        logging.info(f"Saved regression dataset with {len(history)} samples to {output_path}")
+        return history
     
     
 if __name__ == "__main__":
@@ -738,42 +817,44 @@ if __name__ == "__main__":
     
     G = graph_construction(placedb)
     hmsa = HMSA(G, placedb, def_file_path=def_file)
-    pareto_archive = hmsa.run_annealing()
+    hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
-    # First-round candidates
-    candidates = candidate_selection(pareto_archive)
+    # pareto_archive = hmsa.run_annealing()
     
-    # Refinement phase: keep archive, reinitialize from each candidate, run at low temperature
-    refine_T_max = 1.0
-    refine_T_min = 0.05
-    refine_gamma = 0.9
-    refine_steps = 400
-    for _, val in candidates.items():
-        _, solution = val
-        hmsa.reset_state_from_solution(solution)
-        hmsa.run_annealing(T_max=refine_T_max, T_min=refine_T_min, gamma=refine_gamma, steps_per_T=refine_steps)
+    # # First-round candidates
+    # candidates = candidate_selection(pareto_archive)
     
-    # Update archive and candidates after refinement
-    pareto_archive = hmsa.pareto_archive_grid
-    candidates = candidate_selection(pareto_archive)
-    print([(key, value[0]) for key, value in pareto_archive.items()])
-    print(time.time() - tt)
-    # Save both pareto_archive and candidates to a single file
-    results_path = os.path.join(out_dir, "hmsa_results.json")
-    results = {
-        "pareto_archive": {
-            "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
-            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
-        },
-        "candidates": {
-            "description": "Selected candidate solutions from the Pareto archive for further evaluation",
-            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in candidates.items()}
-        }
-    }
-    with open(results_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
+    # # Refinement phase: keep archive, reinitialize from each candidate, run at low temperature
+    # refine_T_max = 1.0
+    # refine_T_min = 0.05
+    # refine_gamma = 0.9
+    # refine_steps = 400
+    # for _, val in candidates.items():
+    #     _, solution = val
+    #     hmsa.reset_state_from_solution(solution)
+    #     hmsa.run_annealing(T_max=refine_T_max, T_min=refine_T_min, gamma=refine_gamma, steps_per_T=refine_steps)
+    
+    # # Update archive and candidates after refinement
+    # pareto_archive = hmsa.pareto_archive_grid
+    # candidates = candidate_selection(pareto_archive)
+    # print([(key, value[0]) for key, value in pareto_archive.items()])
+    # print(time.time() - tt)
+    # # Save both pareto_archive and candidates to a single file
+    # results_path = os.path.join(out_dir, "hmsa_results.json")
+    # results = {
+    #     "pareto_archive": {
+    #         "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
+    #         "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
+    #     },
+    #     "candidates": {
+    #         "description": "Selected candidate solutions from the Pareto archive for further evaluation",
+    #         "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in candidates.items()}
+    #     }
+    # }
+    # with open(results_path, 'w') as f:
+    #     json.dump(results, f, indent=2)
+    # logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
    
     # Plot and save the Pareto front with candidates highlighted
-    pareto_plot_path = os.path.join(out_dir, "pareto_front.png")
-    plot_pareto_front(pareto_archive, pareto_plot_path, candidates)
+    # pareto_plot_path = os.path.join(out_dir, "pareto_front.png")
+    # plot_pareto_front(pareto_archive, pareto_plot_path, candidates)
