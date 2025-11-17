@@ -7,7 +7,7 @@ import sys
 import logging
 import random
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -66,11 +66,24 @@ class HMSADataset(torch.utils.data.Dataset):
         self,
         base_pyg_data: Data,
         node_to_idx: Dict[int, int],
-        solutions: List[Tuple[List[List[int]], Tuple[float, float]]]
+        solutions: List[Tuple[List[List[int]], Tuple[float, float]]],
+        label_mean: Optional[torch.Tensor] = None,
+        label_std: Optional[torch.Tensor] = None,
     ):
         self.base_pyg_data = base_pyg_data
         self.node_to_idx = node_to_idx
         self.solutions = solutions
+        
+        # Compute normalization stats if not provided
+        if label_mean is None or label_std is None:
+            labels = torch.tensor([label for _, label in solutions], dtype=torch.float32)
+            self.label_mean = labels.mean(dim=0)
+            self.label_std = labels.std(dim=0)
+            # Avoid division by zero for constant features
+            self.label_std = torch.clamp(self.label_std, min=1e-8)
+        else:
+            self.label_mean = label_mean
+            self.label_std = label_std
 
     def __len__(self) -> int:
         return len(self.solutions)
@@ -79,9 +92,16 @@ class HMSADataset(torch.utils.data.Dataset):
         partition, label = self.solutions[idx]
         # Generate graph on-the-fly instead of storing all in memory
         pyg_graph = update_die_in_pyg(self.base_pyg_data, partition, self.node_to_idx)
+        # Normalize labels to same scale for balanced gradient updates
+        label_tensor = torch.tensor(label, dtype=torch.float32)
+        normalized_label = (label_tensor - self.label_mean) / self.label_std
         # y should be 1D (2,) - PyG DataLoader will stack to (batch_size, 2)
-        pyg_graph.y = torch.tensor(label, dtype=torch.float32)
+        pyg_graph.y = normalized_label
         return pyg_graph
+    
+    def denormalize(self, normalized_labels: torch.Tensor) -> torch.Tensor:
+        """Convert normalized predictions back to original scale."""
+        return normalized_labels * self.label_std + self.label_mean
 
 
 class GraphRegressor(nn.Module):
@@ -125,13 +145,20 @@ def train_model(
     train_loader: DataLoader,
     val_loader: DataLoader,
     device: torch.device,
+    dataset: HMSADataset,
     epochs: int = 100,
     lr: float = 1e-3,
+    checkpoint_path: Optional[Path] = None,
 ) -> Tuple[float, Dict[str, torch.Tensor]]:
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     criterion = nn.MSELoss()
     best_state: Dict[str, torch.Tensor] | None = None
     best_val_loss = float("inf")
+    
+    # Log normalization stats
+    logging.info(f"Label normalization stats:")
+    logging.info(f"  Mean: cut_size={dataset.label_mean[0]:.2f}, area_imbalance={dataset.label_mean[1]:.2f}")
+    logging.info(f"  Std:  cut_size={dataset.label_std[0]:.2f}, area_imbalance={dataset.label_std[1]:.2f}")
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -170,6 +197,20 @@ def train_model(
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+            
+            # Save checkpoint immediately when better model is found
+            if checkpoint_path is not None:
+                checkpoint_data = {
+                    "model_state_dict": best_state,
+                    "val_loss": best_val_loss,
+                    "epoch": epoch,
+                    "input_dim": model.conv1.in_channels,
+                    "hidden_dim": model.conv1.out_channels,
+                    "label_mean": dataset.label_mean.cpu(),
+                    "label_std": dataset.label_std.cpu(),
+                }
+                torch.save(checkpoint_data, checkpoint_path)
+                logging.info(f"Saved improved checkpoint (val_loss={best_val_loss:.4f}, epoch={epoch}) to {checkpoint_path}")
 
     return best_val_loss, best_state or {k: v.cpu().clone() for k, v in model.state_dict().items()}
 
@@ -246,20 +287,14 @@ def main() -> None:
         train_loader,
         val_loader,
         device=device,
+        dataset=dataset,
         epochs=args.epochs,
         lr=args.learning_rate,
+        checkpoint_path=checkpoint_path,
     )
 
-    torch.save(
-        {
-            "model_state_dict": best_state,
-            "input_dim": sample_graph.num_node_features,
-            "hidden_dim": model.conv1.out_channels,
-            "val_loss": best_val_loss,
-        },
-        checkpoint_path,
-    )
-    logging.info(f"Saved best checkpoint (val_loss={best_val_loss:.4f}) to {checkpoint_path}")
+    # Final confirmation - checkpoint should already be saved, but log completion
+    logging.info(f"Training completed. Best validation loss: {best_val_loss:.4f}")
 
 
 if __name__ == "__main__":
