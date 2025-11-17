@@ -754,7 +754,7 @@ class HMSA:
         T_max: float = 500,
         T_min: float = 0.1,
         gamma: float = 0.95,
-        steps_per_T: int = 1000,
+        steps_per_T: int = 100,
     ) -> List[Dict[str, Any]]:
         history: List[Dict[str, Any]] = []
         self.run_annealing(T_max=T_max, T_min=T_min, gamma=gamma, steps_per_T=steps_per_T, history=history)
