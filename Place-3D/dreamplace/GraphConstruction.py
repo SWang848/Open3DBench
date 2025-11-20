@@ -135,13 +135,10 @@ def _edge_die_features(die_u: Optional[int], die_v: Optional[int]) -> Tuple[int,
 def build_static_graph(
     placedb,
     hierarchy_embeddings: Optional[Dict[str, torch.Tensor]] = None,
+    edge_normalize: bool = True,
 ) -> nx.Graph:
     G = nx.Graph()
-    if hierarchy_embeddings is None:
-        hierarchy_encoder = HierarchyEncoder(placedb)
-        hierarchy_embedding_dict = hierarchy_encoder.build_hierarchy_embeddings()
-    else:
-        hierarchy_embedding_dict = hierarchy_embeddings
+    hierarchy_embedding_dict = hierarchy_embeddings
 
     node_attrs = {}
     mean_node_area = 0.0
@@ -157,7 +154,7 @@ def build_static_graph(
             node_area = placedb.node_size_x[node] * placedb.node_size_y[node]
             node_attrs[node] = {
                 "area": node_area,
-                "hierarchy_embedding": hierarchy_embedding_dict[node_name],
+                "hierarchy_embedding": hierarchy_embedding_dict[node_name] if hierarchy_embedding_dict is not None else None,
                 "is_macro": False,
                 "die": 0,
             }
@@ -203,16 +200,23 @@ def build_static_graph(
                 key = (u, v) if u < v else (v, u)
                 edge_weights[key] += 1.0
 
-    min_weight = min(edge_weights.values())
-    max_weight = max(edge_weights.values())
-    for (u, v), weight in edge_weights.items():
-        normalized_weight = (weight - min_weight) / (max_weight - min_weight) if max_weight - min_weight > 0 else 1.0
-        G.add_edge(
-            u,
-            v,
-            weight=normalized_weight,
-        )
-
+    if edge_normalize:
+        min_weight = min(edge_weights.values())
+        max_weight = max(edge_weights.values())
+        for (u, v), weight in edge_weights.items():
+            normalized_weight = (weight - min_weight) / (max_weight - min_weight) if max_weight - min_weight > 0 else 1.0
+            G.add_edge(
+                u,
+                v,
+                weight=normalized_weight,
+            )
+    else:
+        for (u, v), weight in edge_weights.items():
+            G.add_edge(
+                u,
+                v,
+                weight=weight,
+            )
     return G
 
 def apply_partition_to_graph(
@@ -301,10 +305,14 @@ def update_die_in_pyg(data: Data, partition: List[List[int]], node_to_idx: Dict[
     Since base graph has all nodes at die=0, we only need to update upper_set nodes to 1.0.
     """
     upper_set = set(partition[1])
+    # Clone the entire Data object, ensuring x tensor is properly cloned
     new_data = data.clone()
+    # Explicitly clone the x tensor to ensure it's a deep copy (not sharing memory)
+    new_data.x = data.x.clone()
     # Die feature is at index 2 (after area=0, macro_flag=1, die=2, hierarchy_embedding=3:66)
     # All nodes already have die=0 from base graph, so only update upper_set nodes
     for node_id in upper_set:
-        new_data.x[node_to_idx[node_id], 2] = 1.0
+        if node_id in node_to_idx:
+            new_data.x[node_to_idx[node_id], 2] = 1.0
     return new_data
 
