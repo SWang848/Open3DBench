@@ -4,8 +4,100 @@ from pathlib import Path
 from typing import Tuple, Dict
 
 import numpy as np
+from scipy.optimize import minimize, LinearConstraint, Bounds
+from scipy.optimize import linprog
 
-def frank_wolfe_d_optimal(X, max_iter=200, step_scheme="1/t", epsilon=1e-8, verbose=False):
+def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
+    """
+    Solve the continuous D-optimal design problem with scipy.optimize.minimize.
+
+    Args:
+        X : np.ndarray, shape (N, d)
+            Each row is a feature vector phi(x_i)^T.
+        epsilon : float
+            Small jitter added to M for numerical stability.
+        verbose : bool
+            If True, prints basic info.
+
+    Returns:
+        w_opt : np.ndarray, shape (N,)
+            Optimal design weights on the simplex.
+        result : OptimizeResult
+            Raw scipy result object.
+    """
+    N, d = X.shape
+
+    # Initial design: uniform weights on simplex
+    w0 = np.ones(N) / N
+
+    def info_matrix(w):
+        WX = np.diag(w) @ X            # shape (N, d)
+        M = X.T @ WX
+        M += epsilon * np.eye(d)
+        return M
+
+    def fun(w):
+        # Penalize infeasible w to keep solver away from bad regions
+        # if np.any(w < 0):
+        #     return 1e6 + np.sum(np.maximum(-w, 0.0))
+        M = info_matrix(w)
+        sign, logdet = np.linalg.slogdet(M)
+        # If M is not SPD, penalize heavily
+        # if sign <= 0:
+        #     return 1e6
+        return -logdet  # we minimize -logdet
+
+    def jac(w):
+        """
+        Gradient of -log det M(w) wrt w_i:
+        df/dw_i = -phi_i^T M^{-1} phi_i
+        """
+        M = info_matrix(w)
+        M_inv = np.linalg.inv(M)
+        XM_inv = X @ M_inv    
+        XM_invX = XM_inv @ X.T # shape (N, d)
+        # quad = np.sum(XM_inv * X, axis=1)  # phi_i^T M^{-1} phi_i
+        grad = np.array([XM_invX[i,i] for i in range(XM_invX.shape[0])])
+        return -1 * grad
+
+    # Sum_i w_i = 1  (linear equality constraint)
+    A = np.ones((1, N))
+    linear_constraint = LinearConstraint(A, lb=[1.0], ub=[1.0])
+
+    # Bounds: 0 <= w_i <= 1
+    bounds = Bounds(lb=np.zeros(N), ub=np.ones(N))
+
+    result = minimize(
+        fun,
+        w0,
+        method="SLSQP",                 # or "trust-constr"
+        jac=jac,
+        constraints=[linear_constraint],
+        bounds=bounds,
+        options={"maxiter": 500, "ftol": 1e-8, "disp": verbose},
+    )
+
+    w_opt = result.x
+    # Project tiny negatives to 0 and renormalize, just to be safe
+    # w_opt = np.maximum(w_opt, 0.0)
+    # s = w_opt.sum()
+    # if s > 0:
+    #     w_opt /= s
+    M= info_matrix(w_opt)
+    M_inv = np.linalg.inv(M)
+    A_reg = M - epsilon * np.eye(M.shape[0])
+    q = np.array([X[i] @ np.linalg.solve(A_reg, X[i].T) for i in range(X.shape[0])])
+    g_star = np.max(q)
+
+    if verbose:
+        print("Optimization success:", result.success)
+        print("Final objective (-logdet):", fun(w_opt))
+        print(f"g_star value:{g_star:.4f}")
+    breakpoint()
+    return w_opt, result
+
+
+def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verbose=False):
     """
     Frank-Wolfe for D-optimal design (approximate design on simplex of size N).
 
@@ -34,7 +126,7 @@ def frank_wolfe_d_optimal(X, max_iter=200, step_scheme="1/t", epsilon=1e-8, verb
 
     def compute_M_and_inv(w):
         # M = X^T diag(w) X
-        WX = w[:, None] * X
+        WX = np.diag(w) @ X            # shape (N, d)
         M = X.T @ WX
         M += epsilon * np.eye(d)
         M_inv = np.linalg.inv(M)
@@ -53,11 +145,23 @@ def frank_wolfe_d_optimal(X, max_iter=200, step_scheme="1/t", epsilon=1e-8, verb
 
         # Gradient: grad_i = -phi_i^T M^{-1} phi_i
         # Compute v_i = phi_i^T M^{-1} phi_i efficiently:
-        XM_inv = X @ M_inv      # shape (N, d)
-        quad = np.sum(XM_inv * X, axis=1)  # v_i
-        grad = -quad
+        # XM_inv = X @ M_inv      # shape (N, d)
+        # XM_invX = XM_inv @ X.T # shape (N, d)
+        Y = np.linalg.solve(M, X.T)   # solves A @ Y = X.T
+        grad = np.sum(X.T * Y, axis=0)
+        # quad = np.sum(XM_inv * X, axis=1)  # phi_i^T M^{-1} phi_i
+        # grad = np.array([XM_invX[i,i] for i in range(XM_invX.shape[0])])
+        # quad = np.sum(XM_inv * X, axis=1)  # v_i
+        grad = -1 * grad
+        
+        # s = linprog(grad, A_eq=np.ones((1,N)), b_eq=np.ones(1))
+        # s=s.x
+        # if t%100==0:
+        #     logging.info(f"grad value:{grad}")
+        #     logging.info(f"s value:{s}")
+        #     logging.info(f"i_star value:{np.argmin(grad)}")
 
-        # Linear minimization oracle on simplex → pick vertex with smallest grad component
+        # # Linear minimization oracle on simplex → pick vertex with smallest grad component
         i_star = np.argmin(grad)
         s = np.zeros_like(w)
         s[i_star] = 1.0
@@ -83,6 +187,23 @@ def frank_wolfe_d_optimal(X, max_iter=200, step_scheme="1/t", epsilon=1e-8, verb
         # Update
         w = (1 - gamma) * w + gamma * s
 
+    # logging.info(f"det value:{np.exp(logdet_trial):.4f}")
+    W = np.diag(w)
+    A = X.T @ W @ X                      # (d, d)
+
+    # Optional small regularization if A is ill-conditioned
+    eps = 1e-8
+    A_reg = A + eps * np.eye(A.shape[0])
+
+    # Solve A_reg @ Y = X.T  -> Y = A_reg^{-1} X.T
+    # Y = np.linalg.solve(A_reg, X.T)      # (d, N)
+
+    # # q[i] = x_i^T A^{-1} x_i
+    # q = np.sum(X.T * Y, axis=0)          # (N,)
+    q = np.array([X[i] @ np.linalg.solve(A_reg, X[i].T) for i in range(X.shape[0])])
+    g_star = np.max(q)
+    logging.info(f"g_star value:{g_star:.4f}")
+    
     return w, history
 
 
@@ -102,10 +223,14 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
     
     candidate_keys = data["candidate_keys"]
     
-    feature_matrix = data["polynomial_features"]
-    feature_names = data.get("polynomial_feature_names", [])
-    feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
-    logging.info(f"Using polynomial features: shape={feature_matrix.shape}")
+    # feature_matrix = data["polynomial_features"]
+    feature_matrix = data["original_features"]
+    # feature_names = data.get("polynomial_feature_names", [])
+    feature_names = data.get("original_feature_names", [])
+    # feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
+    feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
+    # logging.info(f"Using polynomial features: shape={feature_matrix.shape}")
+    logging.info(f"Using original features: shape={feature_matrix.shape}")
     
     metadata = {
         "candidate_keys": candidate_keys,
@@ -155,7 +280,6 @@ def load_labels_for_candidates(
 
 def select_candidates_by_weights(
     weights: np.ndarray,
-    candidate_keys: list,
     top_k: int = None,
     threshold: float = None,
 ) -> list:
@@ -169,17 +293,16 @@ def select_candidates_by_weights(
         threshold: If provided, return candidates with weight >= threshold
     
     Returns:
-        List of selected candidate keys
+        List of selected candidate indices
     """
     if top_k is not None:
         # Select top K candidates by weight
-        top_indices = np.argsort(weights)[-top_k:][::-1]
-        selected = [candidate_keys[i] for i in top_indices]
-        logging.info(f"Selected top {top_k} candidates by weight")
+        selected_indices = np.argsort(weights)[-top_k:][::-1]
+        logging.info(f"Selected top {top_k} candidates by weight: {selected_indices}")
     elif threshold is not None:
         # Select candidates above threshold
-        selected = [candidate_keys[i] for i in range(len(weights)) if weights[i] >= threshold]
-        logging.info(f"Selected {len(selected)} candidates with weight >= {threshold}")
+        selected_indices = np.where(weights >= threshold)[0]
+        logging.info(f"Selected {len(selected_indices)} candidates with weight >= {threshold}")
     else:
         # Select all candidates with non-zero weight
         # 
@@ -195,27 +318,35 @@ def select_candidates_by_weights(
         #    safely excluded from the design.
         # 4. The selected candidates with non-zero weights are the ones that matter most for
         #    building an informative dataset for regression model training.
-        selected = [candidate_keys[i] for i in range(len(weights)) if weights[i] > 1e-6]
-        logging.info(f"Selected {len(selected)} candidates with non-zero weight")
+        selected_indices = np.where(weights > 1e-6)[0]
+        logging.info(f"Selected {len(selected_indices)} candidates with non-zero weight")
     
-    return selected
+    return selected_indices
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
     parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
-    parser.add_argument("--hmsa-results", type=Path, default=None, help="Path to hmsa_results.json to extract labels for selected candidates")
-    parser.add_argument("--max-iter", type=int, default=200, help="Maximum iterations for Frank-Wolfe algorithm")
-    parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], help="Step size scheme")
-    parser.add_argument("--epsilon", type=float, default=1e-8, help="Jitter for numerical stability")
+    parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
+                       help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
+    parser.add_argument("--max-iter", type=int, default=200, help="Maximum iterations for optimization algorithm")
+    parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
+                       help="Step size scheme (only used for Frank-Wolfe method)")
+    parser.add_argument("--epsilon", type=float, default=1e-6, help="Jitter for numerical stability")
     parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results")
     parser.add_argument("--top-k", type=int, default=None, help="Select top K candidates by weight")
     parser.add_argument("--threshold", type=float, default=None, help="Select candidates with weight >= threshold")
-    parser.add_argument("--save-training-data", action="store_true", help="Save selected candidates with features and labels for regression training")
     parser.add_argument("--verbose", action="store_true", help="Verbose output during optimization")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
+def d_opt_objective(X, w, epsilon=1e-8):
+    WX = w[:, None] * X
+    M = X.T @ WX + epsilon * np.eye(X.shape[1])
+    sign, logdet = np.linalg.slogdet(M)
+    if sign <= 0:
+        return np.inf
+    return -logdet
 
 def main() -> None:
     args = parse_args()
@@ -227,7 +358,9 @@ def main() -> None:
     # Load features
     logging.info(f"Loading features from {args.features_file}...")
     X, candidate_keys, metadata = load_features_from_file(args.features_file)
-    
+    U, S, Vt = np.linalg.svd(X, full_matrices=False)
+    r = np.sum(S > 1e-8)
+    logging.info(f"Effective rank of feature matrix: {r}")
     logging.info(f"Feature matrix shape: {X.shape}")
     logging.info(f"Number of candidates: {len(candidate_keys)}")
     logging.info(f"Feature dimension: {X.shape[1]}")
@@ -236,126 +369,78 @@ def main() -> None:
     if X.shape[1] > X.shape[0]:
         logging.warning(f"Feature dimension ({X.shape[1]}) > number of candidates ({X.shape[0]}). "
                        f"Matrix may be rank-deficient. Consider reducing polynomial degree.")
-    
+    X = np.delete(X, 0, axis=1)
+    print(f"Matrix rank: {np.linalg.matrix_rank(X)}")
+    print(f"Feature matrix shape: {X.shape}")
+    # X = np.random.randn(115, 34)
+    # print(f"Random Matrix rank: {np.linalg.matrix_rank(X)}")
     # Run D-optimal design
-    logging.info("Running Frank-Wolfe D-optimal design algorithm...")
-    logging.info(f"  Max iterations: {args.max_iter}")
-    logging.info(f"  Step scheme: {args.step_scheme}")
-    logging.info(f"  Epsilon: {args.epsilon}")
-    
-    w, history = frank_wolfe_d_optimal(
-        X,
-        max_iter=args.max_iter,
-        step_scheme=args.step_scheme,
-        epsilon=args.epsilon,
-        verbose=args.verbose,
-    )
-    
+
+
+    if args.method == "scipy":
+        logging.info("Running scipy-based D-optimal design algorithm...")
+        logging.info(f"  Max iterations: {args.max_iter}")
+        logging.info(f"  Epsilon: {args.epsilon}")
+        
+        w, history = scipy_d_optimal(
+            X,
+            epsilon=args.epsilon,
+            verbose=args.verbose,
+        )
+        f_sci = d_opt_objective(X, w, epsilon=args.epsilon)
+        logging.info(f"  scipy-based objective: {f_sci:.4f}")
+    else:  # frank_wolfe
+        logging.info("Running Frank-Wolfe D-optimal design algorithm...")
+        logging.info(f"  Max iterations: {args.max_iter}")
+        logging.info(f"  Step scheme: {args.step_scheme}")
+        logging.info(f"  Epsilon: {args.epsilon}")
+        
+        w, history = frank_wolfe_d_optimal(
+            X,
+            max_iter=args.max_iter,
+            step_scheme=args.step_scheme,
+            epsilon=args.epsilon,
+            verbose=args.verbose,
+        )
+        
+        f_fw = d_opt_objective(X, w, epsilon=args.epsilon)
+        logging.info(f"  frank-wolfe-based objective: {f_fw:.4f}")
+        
     logging.info(f"D-optimal design completed.")
-    logging.info(f"  Final objective: {history['f'][-1]:.4f}")
-    logging.info(f"  Number of non-zero weights: {(w > 1e-2).sum()}")
+    # logging.info(f"  Final objective: {history['f'][-1]:.4f}")
+    logging.info(f"  Number of non-zero weights: {(w > 1e-6).sum()}")
     logging.info(f"  Max weight: {w.max():.6f}")
     logging.info(f"  Min weight: {w[w > 1e-6].min() if (w > 1e-6).any() else 0:.6f}")
     
     # Select candidates based on weights
-    selected_candidates = select_candidates_by_weights(
+    selected_indices = select_candidates_by_weights(
         w,
-        candidate_keys,
         top_k=args.top_k,
         threshold=args.threshold,
     )
     
-    # Load labels for selected candidates if hmsa_results is provided
-    labels_dict = {}
-    if args.hmsa_results and args.hmsa_results.exists():
-        logging.info(f"Loading labels from {args.hmsa_results}...")
-        labels_dict = load_labels_for_candidates(args.hmsa_results, selected_candidates)
-        logging.info(f"Loaded labels for {len(labels_dict)} selected candidates")
-    
     # Prepare output
     output_path = args.output or (args.features_file.parent / "d_optimal_results.npy")
-    
+    selected_candidates = [candidate_keys[i] for i in selected_indices]
+
+    # breakpoint()
     output_data = {
         "weights": w,
         "candidate_keys": candidate_keys,
-        "selected_candidates": selected_candidates,
+        "selected_indices": selected_indices,
         "history": history,
         "metadata": metadata,
         "algorithm_params": {
+            "method": args.method,
             "max_iter": args.max_iter,
             "step_scheme": args.step_scheme,
             "epsilon": args.epsilon
         },
     }
     
-    # Add labels if available
-    if labels_dict:
-        output_data["selected_labels"] = labels_dict
-        logging.info("Labels included in output data")
-    
     np.save(output_path, output_data, allow_pickle=True)
     logging.info(f"Saved D-optimal results to {output_path}")
     logging.info(f"  Selected {len(selected_candidates)} candidates")
-    
-    # Save training dataset if requested
-    if args.save_training_data and len(selected_candidates) > 0:
-        # Load original features data
-        features_data = np.load(args.features_file, allow_pickle=True).item()
-        
-        # Extract features and labels for selected candidates
-        selected_indices = [candidate_keys.index(key) for key in selected_candidates if key in candidate_keys]
-        
-        if len(selected_indices) > 0:
-            # Get polynomial features for selected candidates
-            selected_polynomial_features = features_data["polynomial_features"][selected_indices]
-            selected_original_features = features_data["original_features"][selected_indices]
-            
-            # Get labels
-            selected_labels = []
-            selected_keys_with_labels = []
-            for key in selected_candidates:
-                if key in labels_dict:
-                    selected_labels.append(labels_dict[key])
-                    selected_keys_with_labels.append(key)
-            
-            if len(selected_labels) > 0:
-                training_data = {
-                    "candidate_keys": selected_keys_with_labels,
-                    "polynomial_features": selected_polynomial_features[:len(selected_labels)],
-                    "original_features": selected_original_features[:len(selected_labels)],
-                    "labels": np.array(selected_labels),  # shape: (N, 2) where 2 = [cut_size, area_imbalance]
-                    "weights": w[selected_indices[:len(selected_labels)]],
-                    "feature_names": {
-                        "original": features_data.get("original_feature_names", []),
-                        "polynomial": features_data.get("polynomial_feature_names", []),
-                    },
-                }
-                
-                training_data_path = args.features_file.parent / "d_optimal_training_data.npy"
-                np.save(training_data_path, training_data, allow_pickle=True)
-                logging.info(f"Saved training dataset to {training_data_path}")
-                logging.info(f"  Number of training samples: {len(selected_labels)}")
-                logging.info(f"  Feature dimensions: original={selected_original_features.shape[1]}, "
-                           f"polynomial={selected_polynomial_features.shape[1]}")
-                logging.info(f"  Labels shape: {np.array(selected_labels).shape}")
-                logging.info("  You can now use this dataset to train a regression model!")
-    
-    # Print top candidates
-    if len(selected_candidates) > 0:
-        # Get weights for selected candidates
-        selected_indices = [candidate_keys.index(key) for key in selected_candidates]
-        selected_weights = w[selected_indices]
-        
-        # Sort by weight
-        sorted_pairs = sorted(zip(selected_candidates, selected_weights), key=lambda x: x[1], reverse=True)
-        
-        logging.info("Top selected candidates by weight:")
-        for i, (key, weight) in enumerate(sorted_pairs[:10]):
-            label_str = ""
-            if key in labels_dict:
-                cut_size, area_imbalance = labels_dict[key]
-                label_str = f", cut_size={cut_size:.2f}, area_imbalance={area_imbalance:.2f}"
-            logging.info(f"  {i+1}. '{key}': weight={weight:.6f}{label_str}")
 
 
 if __name__ == "__main__":

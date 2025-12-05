@@ -129,109 +129,6 @@ def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         logging.info(f"Pareto front plot saved to '{save_path}'")
         plt.close()
-
-def candidate_selection(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]],
-                        budget: int = 10,
-                        front_ratio: float = 0.4,
-                        side_percentile: float = 0.1) -> Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]]:
-    """
-    Selects a set of candidates from the grid archive by adaptively filtering the sides and sampling the knee and dominated cloud.
-    """
-    
-    def _find_pareto_front(points_data: List[tuple]) -> List[tuple]:
-        front = []
-        for p1_data in points_data:
-            is_dominated = False
-            p1_cost = p1_data[1] # (cutsize, imbalance)
-            
-            for p2_data in points_data:
-                if p1_data == p2_data: continue
-                p2_cost = p2_data[1]
-                if p1_cost[0] >= p2_cost[0] and p1_cost[1] >= p2_cost[1]:
-                    is_dominated = True
-                    break
-            
-            if not is_dominated:
-                front.append(p1_data)
-        return front
-    
-    all_data_points = []
-    for grid_key, (cost, solution) in pareto_archive_grid.items():
-        all_data_points.append((grid_key, cost, solution))
-    
-    if len(all_data_points) <= budget:
-        print("Not enough data points to select candidates")
-        return pareto_archive_grid
-    
-    points_with_norm = []
-    costs = np.array([point[1] for point in all_data_points])
-    normalized_costs = minmax_scale(costs, feature_range=(0, 1))
-    
-    for i, data in enumerate(all_data_points):
-        points_with_norm.append((data[0], data[1], data[2], normalized_costs[i]))
-    
-    knee_points = []
-    side_points = []
-    
-    for point in points_with_norm:
-        norm_cost = point[3]
-        is_side_point = False
-        
-        if norm_cost[0] <= side_percentile and norm_cost[1] >= (1 - side_percentile):
-            is_side_point = True
-        
-        if norm_cost[1] <= side_percentile and norm_cost[0] >= (1 - side_percentile):
-            is_side_point = True
-        
-        if is_side_point:
-            side_points.append(point)
-        else:
-            knee_points.append(point)
-        
-    knee_front = _find_pareto_front(knee_points)
-    knee_cloud = [point for point in knee_points if point not in knee_front]
-    
-    budget_front = int(budget * front_ratio)
-    final_candidates_data = []
-    
-    # sample the front points
-    if len(knee_front) > 0:
-        front_norm_costs = np.array([point[3] for point in knee_front])
-        n_front_clusters = min(budget_front, len(knee_front))
-        
-        kmeans_front = KMeans(n_clusters=n_front_clusters, random_state=0, n_init=10).fit(front_norm_costs)
-        centroids_front = kmeans_front.cluster_centers_
-        
-        for i in range(n_front_clusters):
-            cluster_points_indices = np.where(kmeans_front.labels_ == i)[0]
-            if len(cluster_points_indices) == 0: continue
-            
-            centroid = centroids_front[i]
-            distances = distance.cdist([centroid], front_norm_costs[cluster_points_indices])
-            closest_point_idx = cluster_points_indices[distances.argmin()]
-            final_candidates_data.append(knee_front[closest_point_idx])
-    
-    # sample the cloud points
-    remaining_budget = budget - len(final_candidates_data)
-    if len(knee_cloud) > 0 and remaining_budget > 0:
-        cloud_norm_costs = np.array([point[3] for point in knee_cloud])
-        n_cloud_clusters = min(remaining_budget, len(knee_cloud))
-        
-        kmeans_cloud = KMeans(n_clusters=n_cloud_clusters, random_state=0, n_init=10).fit(cloud_norm_costs)
-        centroids_cloud = kmeans_cloud.cluster_centers_
-        
-        for i in range(n_cloud_clusters):
-            cluster_points_indices = np.where(kmeans_cloud.labels_ == i)[0]
-            if len(cluster_points_indices) == 0: continue
-            
-            centroid = centroids_cloud[i]
-            distances = distance.cdist([centroid], cloud_norm_costs[cluster_points_indices])
-            closest_point_idx = cluster_points_indices[distances.argmin()]
-            final_candidates_data.append(knee_cloud[closest_point_idx])
-    
-    # Convert list to dictionary format matching pareto_archive_grid structure
-    candidates_dict = {candidate[0]: (candidate[1], candidate[2]) for candidate in final_candidates_data}
-    return candidates_dict
         
 class HierarchyNode:
     """
@@ -817,9 +714,9 @@ if __name__ == "__main__":
     
     G = graph_construction(placedb)
     hmsa = HMSA(G, placedb, def_file_path=def_file)
-    hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
+    # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
-    # pareto_archive = hmsa.run_annealing()
+    pareto_archive = hmsa.run_annealing()
     
     # # First-round candidates
     # candidates = candidate_selection(pareto_archive)
@@ -835,25 +732,20 @@ if __name__ == "__main__":
     #     hmsa.run_annealing(T_max=refine_T_max, T_min=refine_T_min, gamma=refine_gamma, steps_per_T=refine_steps)
     
     # # Update archive and candidates after refinement
-    # pareto_archive = hmsa.pareto_archive_grid
-    # candidates = candidate_selection(pareto_archive)
-    # print([(key, value[0]) for key, value in pareto_archive.items()])
-    # print(time.time() - tt)
-    # # Save both pareto_archive and candidates to a single file
-    # results_path = os.path.join(out_dir, "hmsa_results.json")
-    # results = {
-    #     "pareto_archive": {
-    #         "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
-    #         "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
-    #     },
-    #     "candidates": {
-    #         "description": "Selected candidate solutions from the Pareto archive for further evaluation",
-    #         "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in candidates.items()}
-    #     }
-    # }
-    # with open(results_path, 'w') as f:
-    #     json.dump(results, f, indent=2)
-    # logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
+    pareto_archive = hmsa.pareto_archive_grid
+    print([(key, value[0]) for key, value in pareto_archive.items()])
+    print(time.time() - tt)
+    # Save pareto_archive to a single file
+    results_path = os.path.join(out_dir, "hmsa_results.json")
+    results = {
+        "pareto_archive": {
+            "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
+            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
+        },
+    }
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
    
     # Plot and save the Pareto front with candidates highlighted
     # pareto_plot_path = os.path.join(out_dir, "pareto_front.png")

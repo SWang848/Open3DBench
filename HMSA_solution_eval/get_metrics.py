@@ -347,7 +347,7 @@ def get_overflow(log_content):
     return None
 
 
-def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJson, resizefile, upper_log, bottom_log, cost):
+def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJson, resizefile, upper_log, bottom_log, cost, key):
 
 
     final=load_Json(finalJson)
@@ -361,6 +361,7 @@ def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJ
     bottom_log=load_file(bottom_log)
 
     metric = {}
+    metric["Key"] = key
     metric["Cut_size"], metric["Area_imbalance"] = cost[0], cost[1]
     
     metric["U_wHPWL"] = get_wHPWL(upper_log)
@@ -433,7 +434,7 @@ def get_all_metric_json(report_files, placement_reports, solution_log):
         solution_idx = case_name_idx.split("_")[-1]
         key = list(solution_log["pareto_archive"]["solutions"].keys())[int(solution_idx)]
         cost = solution_log["pareto_archive"]["solutions"][key]["cost"] 
-        metric = get_Metric_in(report_file["report"], report_file["route"], report_file["place"],report_file["gp_route"], report_file["fp"], report_file["groute"], report_file["resize"], placement_report["upper"], placement_report["bottom"], cost)
+        metric = get_Metric_in(report_file["report"], report_file["route"], report_file["place"],report_file["gp_route"], report_file["fp"], report_file["groute"], report_file["resize"], placement_report["upper"], placement_report["bottom"], cost, key)
         all_metric_json[solution_idx] = metric
 
     return all_metric_json
@@ -534,17 +535,17 @@ if __name__ == "__main__":
     
     final_df = pd.concat(dataframes, ignore_index=True)
     metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
-    metrics_to_normalize = ["DRT_WL"]
+    # metrics_to_normalize = ["DRT_WL"]
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
     final_df.to_csv(f'final.csv', index=False)
 
-    plot_path = os.path.join(dir_path, "cutsize_imbalance_DRTWL.png")
-    plot_pareto_front(
-        final_df,
-        x_col="Cut_size",
-        y_col="Area_imbalance",
-        fitness_col="Fitness",
-        save_path=plot_path,
-        # max_points=20,
-    )
+    # plot_path = os.path.join(dir_path, "cutsize_imbalance_DRTWL.png")
+    # plot_pareto_front(
+    #     final_df,
+    #     x_col="Cut_size",
+    #     y_col="Area_imbalance",
+    #     fitness_col="Fitness",
+    #     save_path=plot_path,
+    #     # max_points=20,
+    # )

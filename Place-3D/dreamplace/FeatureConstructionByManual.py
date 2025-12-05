@@ -10,9 +10,10 @@ from typing import Dict, List, Tuple
 
 import networkx as nx
 import numpy as np
+import scipy.linalg as la
 from sklearn.preprocessing import PolynomialFeatures
 
-from GraphConstruction import build_static_graph
+from HMSA import graph_construction
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if root_dir not in sys.path:
@@ -44,25 +45,20 @@ def load_candidates_from_json(json_path: Path) -> List[Tuple[str, List[List[int]
 
 
 def compute_global_metrics(
-    G: nx.Graph,
     partition: List[List[int]],
     cut_size: float,
     area_imbalance: float,
     num_nets: int,
     total_macros: int,
     total_area: float,
-) -> Tuple[float, float, float, float, float, float]:
+) -> Tuple[float, float, float]:
     """
     Compute the 4 basic global metrics:
-    - F0: Cut size
-    - F1: Area imbalance
-    - F2: Normalized cut size = cut_size / num_nets
-    - F3: Normalized area imbalance = |A1 - A2| / (A1 + A2) (already computed in JSON)
-    - F4: Macro-count imbalance = |M1 - M2| / (M1 + M2)
-    - F5: Cut per macro (global) = cut_size / num_macros
+    - F0: Normalized cut size = cut_size / num_nets
+    - F1: Normalized area imbalance = |A1 - A2| / (A1 + A2) (already computed in JSON)
+    - F2: Macro-count imbalance = |M1 - M2| / (M1 + M2)
     
     Args:
-        G: Graph with node attributes (area, is_macro)
         partition: [lower_die_node_ids, upper_die_node_ids]
         cut_size: Cut size from JSON (cost[0])
         area_imbalance: Area imbalance from JSON (cost[1])
@@ -70,7 +66,7 @@ def compute_global_metrics(
         total_macros: Total number of macros
     
     Returns:
-        Tuple of (f0, f1, f2, f3, f4, f5)
+        Tuple of (f0, f1, f2)
     """
     lower_ids, upper_ids = partition[0], partition[1]
     
@@ -78,18 +74,14 @@ def compute_global_metrics(
     M1 = len(upper_ids) # Number of macros in tier 1 (upper die)
     M2 = len(lower_ids) # Number of macros in tier 2 (lower die)
 
-    f0 = cut_size
-    f1 = area_imbalance
-    # F2: Normalized cut size
-    f2 = cut_size / num_nets if num_nets > 0 else 0.0
-    # F3: Normalized area imbalance = |A1 - A2| / (A1 + A2)
-    f3 = area_imbalance / total_area
-    # F4: Macro-count imbalance
-    f4 = abs(M1 - M2) / total_macros
-    # F5: Cut per macro (global)
-    f5 = cut_size / total_macros
+    # F0: Normalized cut size
+    f0 = cut_size / num_nets if num_nets > 0 else 0.0
+    # F1: Normalized area imbalance = |A1 - A2| / (A1 + A2)
+    f1 = area_imbalance / total_area
+    # F2: Macro-count imbalance
+    f2 = abs(M1 - M2) / total_macros
     
-    return f0, f1, f2, f3, f4, f5
+    return f0, f1, f2
 
 
 def compute_cut_degree(
@@ -106,14 +98,13 @@ def compute_cut_degree(
         partition: [lower_die_node_ids, upper_die_node_ids]
     
     Returns:
-        f6: Minimum cut degree
-        f7: Maximum cut degree
-        f8: Mean cut degree
-        f9: Standard deviation of cut degree
+        f3: Minimum cut degree
+        f4: Maximum cut degree
+        f5: Mean cut degree
+        f6: Standard deviation of cut degree
     """
     lower_ids, upper_ids = partition[0], partition[1]
     upper_die_set = set(upper_ids)
-    
     cut_degrees = []
     
     # Iterate through all macros
@@ -123,7 +114,6 @@ def compute_cut_degree(
         
         # Determine which tier this macro is in
         macro_in_upper = node in upper_die_set
-        
         # Count edges to nodes in the other tier
         cut_degree = 0.0
         for neighbor in G.neighbors(node):
@@ -131,10 +121,9 @@ def compute_cut_degree(
             
             # If neighbor is in different tier, this edge crosses tiers
             if macro_in_upper != neighbor_in_upper:
-                # Get edge weight (number of nets between these nodes)
-                edge_data = G.get_edge_data(node, neighbor, {})
-                weight = edge_data.get('weight', 1.0)
-                cut_degree += weight
+                # Count number of edges between these nodes (MultiGraph can have parallel edges)
+                num_edges = G.number_of_edges(node, neighbor)
+                cut_degree += num_edges
         
         cut_degrees.append(cut_degree)
     
@@ -142,15 +131,16 @@ def compute_cut_degree(
         return 0.0, 0.0, 0.0, 0.0
     
     cut_degrees_array = np.array(cut_degrees)
-    # F6: Minimum cut degree    
-    f6 = float(np.min(cut_degrees_array))
-    # F7: Maximum cut degree
-    f7 = float(np.max(cut_degrees_array))
-    # F8: Mean cut degree
-    f8 = float(np.mean(cut_degrees_array))
-    # F9: Standard deviation of cut degree
-    f9 = float(np.std(cut_degrees_array))
-    return f6, f7, f8, f9
+    # F3: Minimum cut degree    
+    f3 = float(np.min(cut_degrees_array))
+    # F4: Maximum cut degree
+    f4 = float(np.max(cut_degrees_array))
+    # F5: Mean cut degree
+    f5 = float(np.mean(cut_degrees_array))
+    # F6: Standard deviation of cut degree
+    f6 = float(np.std(cut_degrees_array))
+    
+    return f3, f4, f5, f6
 
 
 def extract_manual_features(
@@ -162,12 +152,11 @@ def extract_manual_features(
     Returns a dictionary mapping candidate keys to feature vectors.
     """
     logging.info("Building graph from PlaceDB...")
-    G = build_static_graph(placedb, edge_normalize=False)
+    G = graph_construction(placedb)
     
-    # Count total number of nets by summing edge weights
-    # Edge weight represents how many nets connect two nodes
-    num_nets = sum(data.get('weight', 1.0) for u, v, data in G.edges(data=True))
-    logging.info(f"Total number of nets: {num_nets}")
+    # Count total number of edges in the graph
+    num_nets = G.number_of_edges()
+    logging.info(f"Total number of nets (edges in graph): {num_nets}")
     
     # Count total macros
     total_macros = sum(1 for node in G.nodes() if G.nodes[node].get("is_macro", False))
@@ -181,11 +170,11 @@ def extract_manual_features(
     logging.info(f"Computing features for {len(candidates)} candidates...")
     for key, partition, cost in candidates:
         cut_size, area_imbalance = cost[0], cost[1]
-        f0, f1, f2, f3, f4, f5 = compute_global_metrics(G, partition, cut_size, area_imbalance, num_nets, total_macros, total_area)
+        f0, f1, f2 = compute_global_metrics(partition, cut_size, area_imbalance, num_nets, total_macros, total_area)
         # Compute cut degree features
-        f6, f7, f8, f9 = compute_cut_degree(G, partition)
-        # Combine all features: [f0, f1, f2, f3, f4, f5, f6, f7, f8, f9]
-        features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6, f7, f8, f9])
+        f3, f4, f5, f6 = compute_cut_degree(G, partition)
+        # Combine all features: [f0, f1, f2, f3, f4, f5, f6]
+        features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6])
     logging.info(f"Extracted features for {len(features_dict)} candidates")
     
     return features_dict
@@ -193,7 +182,7 @@ def extract_manual_features(
 
 def apply_polynomial_features(
     features_dict: Dict[str, np.ndarray],
-    degree: int = 3,
+    degree: int = 2,
     include_bias: bool = False,
 ) -> Tuple[Dict[str, np.ndarray], PolynomialFeatures]:
     """
@@ -252,6 +241,7 @@ def main() -> None:
     logging.info("Loading PlaceDB...")
     params = Params.Params()
     params.load(str(args.params))
+    params.placed_def_input = ""
     os.environ["OMP_NUM_THREADS"] = "%d" % (params.num_threads)
     
     placedb = PlaceDB.PlaceDB()
@@ -277,22 +267,55 @@ def main() -> None:
     
     # Save features (both original and polynomial)
     original_feature_names = [
-        "f0_cut_size", "f1_area_imbalance", "f2_normalized_cut_size", 
-        "f3_normalized_area_imbalance", "f4_macro_count_imbalance", "f5_cut_per_macro",
-        "f6_min_cut_degree", "f7_max_cut_degree", "f8_mean_cut_degree", "f9_std_cut_degree"
+        "f0_normalized_cut_size", "f1_normalized_area_imbalance", "f2_macro_count_imbalance", 
+        "f3_min_cut_degree", "f4_max_cut_degree", "f5_mean_cut_degree", "f6_std_cut_degree"
     ]
-    
+
     # Get polynomial feature names from transformer
     polynomial_feature_names = poly_transformer.get_feature_names_out(original_feature_names)
     
+    # Convert to numpy arrays
+    candidate_keys = list(polynomial_features_dict.keys())
+    original_features_matrix = np.array([manual_features_dict[key] for key in candidate_keys])
+    polynomial_features_matrix = np.array([polynomial_features_dict[key] for key in candidate_keys])
+    
+    # Run QR decomposition to identify linearly dependent columns
+    Q, R, piv = la.qr(polynomial_features_matrix, mode="economic", pivoting=True)
+    tol = 1e-10
+    rank = np.sum(np.abs(np.diag(R)) > tol)
+    
+    independent_columns = np.sort(piv[:rank])  # Sort to preserve original column order
+    dependent_columns = np.sort(piv[rank:])      # Sort for consistent logging
+    
+    # Log information about dropped columns (before dropping)
+    if len(dependent_columns) > 0:
+        dependent_feature_names = polynomial_feature_names[dependent_columns]
+        logging.info(f"Dropped {len(dependent_columns)} linearly dependent columns: {dependent_columns}")
+        logging.info(f"Dropped feature names: {dependent_feature_names.tolist()}")
+    else:
+        logging.info("No linearly dependent columns found - matrix is full rank")
+    
+    # Drop dependent columns from matrix and feature names (preserving original order)
+    polynomial_features_matrix = polynomial_features_matrix[:, independent_columns]
+    
+    
+    
+    polynomial_feature_names = polynomial_feature_names[independent_columns]
+    
+    # Compute and log rank (for viewing only, not saved)
+    original_rank = np.linalg.matrix_rank(original_features_matrix)
+    polynomial_rank = np.linalg.matrix_rank(polynomial_features_matrix)
+    logging.info(f"Feature matrix ranks: original={original_rank}/{original_features_matrix.shape[1]}, "
+                 f"polynomial={polynomial_rank}/{polynomial_features_matrix.shape[1]}")
+    
     output_data = {
-        "candidate_keys": list(polynomial_features_dict.keys()),
-        "original_features": np.array([manual_features_dict[key] for key in polynomial_features_dict.keys()]),
-        "polynomial_features": np.array([polynomial_features_dict[key] for key in polynomial_features_dict.keys()]),
+        "candidate_keys": candidate_keys,
+        "original_features": original_features_matrix,
+        "polynomial_features": polynomial_features_matrix,
         "original_feature_names": original_feature_names,
         "polynomial_feature_names": polynomial_feature_names.tolist(),
         "original_feature_dim": len(original_feature_names),
-        "polynomial_feature_dim": polynomial_features_dict[list(polynomial_features_dict.keys())[0]].shape[0],
+        "polynomial_feature_dim": polynomial_features_matrix.shape[1],
         "polynomial_degree": args.polynomial_degree,
         "include_bias": args.include_bias,
     }
@@ -301,15 +324,13 @@ def main() -> None:
     
     # Print sample features (original)
     if len(manual_features_dict) > 0:
-        for i, (key, features) in enumerate(list(manual_features_dict.items())[:3]):
+        for i, (key, features) in enumerate(list(manual_features_dict.items())[:5]):
             logging.info(f"  Sample original features for '{key}': "
-                        f"f0={features[0]:.2f}, f1={features[1]:.2f}, f2={features[2]:.6f}, "
-                        f"f3={features[3]:.6f}, f4={features[4]:.6f}, f5={features[5]:.6f}, "
-                        f"f6={features[6]:.2f}, f7={features[7]:.2f}, f8={features[8]:.2f}, f9={features[9]:.2f}")
-        
+                        f"f0={features[0]:.2f}, f1={features[1]:.2f}, f2={features[2]:.2f}, f3={features[3]:.2f}, f4={features[4]:.2f}, f5={features[5]:.2f}, f6={features[6]:.2f}")
+
         # Print sample polynomial features (first few)
-        for i, (key, features) in enumerate(list(polynomial_features_dict.items())[:2]):
-            logging.info(f"  Sample polynomial features for '{key}' (first 10): {features[:10]}")
+        for i, (key, features) in enumerate(list(polynomial_features_dict.items())[:5]):
+            logging.info(f"  Sample polynomial features for '{key}': {features}")
 
 
 if __name__ == "__main__":
