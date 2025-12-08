@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy.stats import kendalltau
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.model_selection import train_test_split
 
@@ -21,7 +21,7 @@ sys.path.append(os.path.join(root_dir, "HMSA_solution_eval"))
 from get_metrics import cal_fitness_score
 
 
-def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
+def load_features_from_file(features_path: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
     
@@ -34,14 +34,16 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
     data = np.load(features_path, allow_pickle=True).item()
     
     candidate_keys = data["candidate_keys"]
-    # feature_matrix = data["polynomial_features"]
-    feature_matrix = data["original_features"]
-    # feature_names = data.get("polynomial_feature_names", [])
-    feature_names = data.get("original_feature_names", [])
-    # feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
-    feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
+    if feature_type == "polynomial":
+        feature_matrix = data["polynomial_features"]
+        feature_names = data.get("polynomial_feature_names", [])
+        feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
+    else:
+        feature_matrix = data["original_features"]
+        feature_names = data.get("original_feature_names", [])
+        feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
     
-    logging.info(f"Loaded features: shape={feature_matrix.shape}")
+    logging.info(f"Loaded {feature_type} features: shape={feature_matrix.shape}")
     logging.info(f"  Number of candidates: {len(candidate_keys)}")
     logging.info(f"  Feature dimension: {feature_dim}")
     
@@ -143,6 +145,7 @@ def train_linear_regression(
         logging.info(f"Using weighted regression with {np.sum(sample_weights > 1e-6)} non-zero weights")
     
     # Train model on all data
+    # model = Ridge(alpha=10.0)
     model = LinearRegression()
     if sample_weights is not None:
         model.fit(X, y, sample_weight=sample_weights)
@@ -224,6 +227,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train linear regression model on manual features.")
     parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
     parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
+    parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for regression")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
     parser.add_argument("--output", type=Path, default=None, help="Path to save trained model")
@@ -245,10 +249,13 @@ def main() -> None:
     output_path = args.output or (out_dir / "linear_regressor.pkl")
     
     logging.info(f"Loading features from {args.features_file}...")
-    X, candidate_keys, metadata = load_features_from_file(args.features_file)
-    
-    X = np.delete(X, 0, axis=1)
-    
+    X, candidate_keys, metadata = load_features_from_file(args.features_file, args.feature_type)
+    # breakpoint()
+    # X = np.delete(X, 5, axis=1)
+    # _,_,rsvec = np.linalg.svd(X)
+    # rsvec_new = rsvec[:6]
+    # X = X@rsvec_new.T
+    # breakpoint()
     logging.info(f"Loading fitness scores from {args.fitness_csv}...")
     fitness_dict = load_fitness_scores_from_csv(
         args.fitness_csv,

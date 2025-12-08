@@ -85,7 +85,8 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     #     w_opt /= s
     M= info_matrix(w_opt)
     M_inv = np.linalg.inv(M)
-    A_reg = M - epsilon * np.eye(M.shape[0])
+    # A_reg = M - epsilon * np.eye(M.shape[0])
+    A_reg = M
     q = np.array([X[i] @ np.linalg.solve(A_reg, X[i].T) for i in range(X.shape[0])])
     g_star = np.max(q)
 
@@ -207,7 +208,7 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
     return w, history
 
 
-def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
+def load_features_from_file(features_path: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
     
@@ -223,14 +224,16 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
     
     candidate_keys = data["candidate_keys"]
     
-    # feature_matrix = data["polynomial_features"]
-    feature_matrix = data["original_features"]
-    # feature_names = data.get("polynomial_feature_names", [])
-    feature_names = data.get("original_feature_names", [])
-    # feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
-    feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
-    # logging.info(f"Using polynomial features: shape={feature_matrix.shape}")
-    logging.info(f"Using original features: shape={feature_matrix.shape}")
+    if feature_type == "polynomial":
+        feature_matrix = data["features"]
+        feature_names = data.get("feature_names", [])
+        feature_dim = data.get("feature_dim", feature_matrix.shape[1])
+    else:
+        feature_matrix = data["original_features"]
+        feature_names = data.get("original_feature_names", [])
+        feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
+    
+    logging.info(f"Using {feature_type} features: shape={feature_matrix.shape}")
     
     metadata = {
         "candidate_keys": candidate_keys,
@@ -327,12 +330,13 @@ def select_candidates_by_weights(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
     parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
                        help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
     parser.add_argument("--max-iter", type=int, default=200, help="Maximum iterations for optimization algorithm")
     parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
                        help="Step size scheme (only used for Frank-Wolfe method)")
-    parser.add_argument("--epsilon", type=float, default=1e-6, help="Jitter for numerical stability")
+    parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
     parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results")
     parser.add_argument("--top-k", type=int, default=None, help="Select top K candidates by weight")
     parser.add_argument("--threshold", type=float, default=None, help="Select candidates with weight >= threshold")
@@ -357,7 +361,7 @@ def main() -> None:
     
     # Load features
     logging.info(f"Loading features from {args.features_file}...")
-    X, candidate_keys, metadata = load_features_from_file(args.features_file)
+    X, candidate_keys, metadata = load_features_from_file(args.features_file, args.feature_type)
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
     r = np.sum(S > 1e-8)
     logging.info(f"Effective rank of feature matrix: {r}")
@@ -369,14 +373,9 @@ def main() -> None:
     if X.shape[1] > X.shape[0]:
         logging.warning(f"Feature dimension ({X.shape[1]}) > number of candidates ({X.shape[0]}). "
                        f"Matrix may be rank-deficient. Consider reducing polynomial degree.")
-    X = np.delete(X, 0, axis=1)
+    # X = np.delete(X, 0, axis=1)
     print(f"Matrix rank: {np.linalg.matrix_rank(X)}")
     print(f"Feature matrix shape: {X.shape}")
-    # X = np.random.randn(115, 34)
-    # print(f"Random Matrix rank: {np.linalg.matrix_rank(X)}")
-    # Run D-optimal design
-
-
     if args.method == "scipy":
         logging.info("Running scipy-based D-optimal design algorithm...")
         logging.info(f"  Max iterations: {args.max_iter}")

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import math
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -142,7 +143,99 @@ def compute_cut_degree(
     
     return f3, f4, f5, f6
 
+def compute_hierarchy_features(
+    G: nx.Graph,
+    partition: List[List[int]],
+) -> Tuple[float, ...]:
+    """
+    Compute hierarchy cohesion features for each hierarchy cluster.
+    
+    Since all standard cells are placed in the bottom tier, only macro blocks are partitioned
+    between upper and lower die. This function measures how cohesive (non-segmented) each 
+    hierarchy cluster is across tiers.
+    
+    A hierarchy cluster is defined by a unique hierarchy path prefix (e.g., "top", "top__moduleA", 
+    "top__moduleA__submoduleB"). The code considers all prefix levels of each node's hierarchy path
+    to build clusters that group nodes sharing the same hierarchy path prefix.
+    
+    For each hierarchy cluster containing macros, computes a cohesion score:
+    - Lower values indicate more segmentation (macros split across tiers)
+    - Higher values indicate more cohesion (macros stay together in lower tier with standard cells)
+    
+    Args:
+        G: Graph with node attributes (name, is_macro)
+        partition: [lower_die_node_ids, upper_die_node_ids]
+    
+    Returns:
+        Tuple of cohesion features, one per hierarchy cluster with macros
+    """
+    hierarchy_numstdnode_dict = {}
+    hierarchy_macronode_dict = {}
+    for node in G.nodes():
+        name = G.nodes[node].get("name")
+        hierarchy_level = name.split("__")
+        depth = len(hierarchy_level)
+        # we don't need to consider the last level (cell name)
+        for i in range(depth-1):
+            if i == 0:
+                hierarchy_name = hierarchy_level[i]
+            else:
+                hierarchy_name = hierarchy_name + "__" + hierarchy_level[i]
+            
+            # compute the number of standard nodes for each hierarchy cluster
+            if not G.nodes[node].get("is_macro"):
+                if hierarchy_name not in hierarchy_numstdnode_dict:
+                    hierarchy_numstdnode_dict[hierarchy_name] = 0
+                hierarchy_numstdnode_dict[hierarchy_name] += 1
 
+            # collect the macro nodes for each hierarchy cluster
+            if G.nodes[node].get("is_macro"):
+                if hierarchy_name not in hierarchy_macronode_dict:
+                    hierarchy_macronode_dict[hierarchy_name] = []
+                hierarchy_macronode_dict[hierarchy_name].append(node)
+            
+    hierarchy_features = []
+    # Convert partition[0] to set for O(1) lookup instead of O(n)
+    lower_die_set = set(partition[0]) if partition[0] else set()
+    
+    for key, value in hierarchy_macronode_dict.items():
+        if key in hierarchy_numstdnode_dict:
+            num_stdnodes = hierarchy_numstdnode_dict[key]
+        else:
+            num_stdnodes = 0
+        
+        num_macro = len(value)
+        num_macro_in_lower = sum(1 for i in value if i in lower_die_set)
+        num_macro_in_upper = num_macro - num_macro_in_lower
+        # Compute cohesion score for this hierarchy cluster:
+        # Numerator: counts connections between standard cells and lower-tier macros
+        #   - num_stdnodes * num_macro_in_lower: std cell to lower-tier macro connections
+        #   - C(num_macro_in_lower, 2): macro pairs that are both in lower tier
+        # Denominator: total possible connections (normalization factor)
+        #   - num_stdnodes * num_macro: all std cell to macro connections
+        #   - C(num_macro, 2): all macro pairs
+        # 
+        # Result: cohesion score (inverse of segmentation)
+        # Lower values = more segmented (macros split across tiers)
+        # Higher values = more cohesive (macros concentrated in lower tier with standard cells)
+        
+        if num_stdnodes == 0 and (num_macro_in_lower == 0 or num_macro_in_upper == 0):
+            cohesion_score = 1
+        elif num_stdnodes == 0 and (num_macro_in_lower > 0 and num_macro_in_upper > 0):
+            cohesion_score = 1 - ((num_macro_in_lower * num_macro_in_upper) / math.comb(num_macro, 2))
+        else:
+            cohesion_score = (
+                num_stdnodes * num_macro_in_lower + 
+                math.comb(num_macro_in_lower, 2)
+            ) / (
+                num_stdnodes * num_macro + 
+                math.comb(num_macro, 2)
+            )
+            
+        hierarchy_features.append(cohesion_score)
+    
+    return tuple(hierarchy_features)
+    
 def extract_manual_features(
     candidates: List[Tuple[str, List[List[int]], Tuple[float, float]]],
     placedb: PlaceDB.PlaceDB,
@@ -173,8 +266,10 @@ def extract_manual_features(
         f0, f1, f2 = compute_global_metrics(partition, cut_size, area_imbalance, num_nets, total_macros, total_area)
         # Compute cut degree features
         f3, f4, f5, f6 = compute_cut_degree(G, partition)
-        # Combine all features: [f0, f1, f2, f3, f4, f5, f6]
-        features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6])
+        # compute hierarchy features
+        hierarchy_features = compute_hierarchy_features(G, partition)
+        # Combine all features: [f0, f1, f2, f3, f4, f5, f6, hierarchy_features]
+        features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6] + list(hierarchy_features))
     logging.info(f"Extracted features for {len(features_dict)} candidates")
     
     return features_dict
@@ -218,6 +313,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
     parser.add_argument("hmsa_results", type=Path, help="Path to hmsa_results.json containing candidates.")
     parser.add_argument("--output", type=Path, default=None, help="Path to save extracted features. Default: regression_results/{case_name}/manual_features.npy")
+    parser.add_argument("--polynomial-features", action="store_true", help="Apply polynomial features")
     parser.add_argument("--polynomial-degree", type=int, default=2, help="Degree of polynomial features (default: 2)")
     parser.add_argument("--include-bias", action="store_true", help="Include bias (intercept) term in polynomial features")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
@@ -257,30 +353,30 @@ def main() -> None:
     
     # Extract manual features
     manual_features_dict = extract_manual_features(candidates, placedb)
-    
-    # Apply polynomial features
-    polynomial_features_dict, poly_transformer = apply_polynomial_features(
-        manual_features_dict,
-        degree=args.polynomial_degree,
-        include_bias=args.include_bias,
-    )
-    
-    # Save features (both original and polynomial)
+    candidate_keys = list(manual_features_dict.keys())
+    len_hierarchy_features = len(manual_features_dict[candidate_keys[0]]) - 7 # 7 is the number of original features
     original_feature_names = [
         "f0_normalized_cut_size", "f1_normalized_area_imbalance", "f2_macro_count_imbalance", 
         "f3_min_cut_degree", "f4_max_cut_degree", "f5_mean_cut_degree", "f6_std_cut_degree"
     ]
-
-    # Get polynomial feature names from transformer
-    polynomial_feature_names = poly_transformer.get_feature_names_out(original_feature_names)
-    
-    # Convert to numpy arrays
-    candidate_keys = list(polynomial_features_dict.keys())
+    original_feature_names += [f"hierarchy_cohesion_{i}" for i in range(len_hierarchy_features)]
     original_features_matrix = np.array([manual_features_dict[key] for key in candidate_keys])
-    polynomial_features_matrix = np.array([polynomial_features_dict[key] for key in candidate_keys])
+
+    if args.polynomial_features:
+        polynomial_features_dict, poly_transformer = apply_polynomial_features(
+            manual_features_dict,
+            degree=args.polynomial_degree,
+            include_bias=args.include_bias,
+        )
+        features_dict = polynomial_features_dict
+        feature_names = np.array(poly_transformer.get_feature_names_out(original_feature_names))
+    else:
+        features_dict = manual_features_dict
+        feature_names = np.array(original_feature_names)    
     
     # Run QR decomposition to identify linearly dependent columns
-    Q, R, piv = la.qr(polynomial_features_matrix, mode="economic", pivoting=True)
+    features_matrix = np.array([features_dict[key] for key in candidate_keys])
+    Q, R, piv = la.qr(features_matrix, mode="economic", pivoting=True)
     tol = 1e-10
     rank = np.sum(np.abs(np.diag(R)) > tol)
     
@@ -289,48 +385,43 @@ def main() -> None:
     
     # Log information about dropped columns (before dropping)
     if len(dependent_columns) > 0:
-        dependent_feature_names = polynomial_feature_names[dependent_columns]
+        dependent_feature_names = feature_names[dependent_columns]
         logging.info(f"Dropped {len(dependent_columns)} linearly dependent columns: {dependent_columns}")
         logging.info(f"Dropped feature names: {dependent_feature_names.tolist()}")
     else:
         logging.info("No linearly dependent columns found - matrix is full rank")
     
     # Drop dependent columns from matrix and feature names (preserving original order)
-    polynomial_features_matrix = polynomial_features_matrix[:, independent_columns]
-    
-    
-    
-    polynomial_feature_names = polynomial_feature_names[independent_columns]
+    features_matrix = features_matrix[:, independent_columns]
+    feature_names = feature_names[independent_columns]
     
     # Compute and log rank (for viewing only, not saved)
     original_rank = np.linalg.matrix_rank(original_features_matrix)
-    polynomial_rank = np.linalg.matrix_rank(polynomial_features_matrix)
+    rank = np.linalg.matrix_rank(features_matrix)
+    feature_type = "polynomial" if args.polynomial_features else "original"
     logging.info(f"Feature matrix ranks: original={original_rank}/{original_features_matrix.shape[1]}, "
-                 f"polynomial={polynomial_rank}/{polynomial_features_matrix.shape[1]}")
+                 f"{feature_type}={rank}/{features_matrix.shape[1]}")
     
     output_data = {
         "candidate_keys": candidate_keys,
         "original_features": original_features_matrix,
-        "polynomial_features": polynomial_features_matrix,
+        "features": features_matrix,
         "original_feature_names": original_feature_names,
-        "polynomial_feature_names": polynomial_feature_names.tolist(),
+        "feature_names": feature_names.tolist(),
         "original_feature_dim": len(original_feature_names),
-        "polynomial_feature_dim": polynomial_features_matrix.shape[1],
+        "feature_dim": features_matrix.shape[1],
         "polynomial_degree": args.polynomial_degree,
-        "include_bias": args.include_bias,
+        "polynomial_include_bias": args.include_bias,
     }
     
     np.save(output_path, output_data, allow_pickle=True)
     
-    # Print sample features (original)
-    if len(manual_features_dict) > 0:
-        for i, (key, features) in enumerate(list(manual_features_dict.items())[:5]):
-            logging.info(f"  Sample original features for '{key}': "
-                        f"f0={features[0]:.2f}, f1={features[1]:.2f}, f2={features[2]:.2f}, f3={features[3]:.2f}, f4={features[4]:.2f}, f5={features[5]:.2f}, f6={features[6]:.2f}")
+    for i, (key, features) in enumerate(list(manual_features_dict.items())[:5]):
+        logging.info(f"  Sample original features for '{key}': {features.tolist()}")
 
-        # Print sample polynomial features (first few)
+    if args.polynomial_features:
         for i, (key, features) in enumerate(list(polynomial_features_dict.items())[:5]):
-            logging.info(f"  Sample polynomial features for '{key}': {features}")
+            logging.info(f"  Sample polynomial features for '{key}': {features.tolist()}")
 
 
 if __name__ == "__main__":
