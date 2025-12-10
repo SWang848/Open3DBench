@@ -285,7 +285,7 @@ def select_candidates_by_weights(
     weights: np.ndarray,
     top_k: int = None,
     threshold: float = None,
-) -> list:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Select candidates based on D-optimal design weights.
     
@@ -296,7 +296,8 @@ def select_candidates_by_weights(
         threshold: If provided, return candidates with weight >= threshold
     
     Returns:
-        List of selected candidate indices
+        Tuple of (selected_indices, normalized_weights) where normalized_weights
+        are the selected weights renormalized to sum to 1
     """
     if top_k is not None:
         # Select top K candidates by weight
@@ -324,7 +325,12 @@ def select_candidates_by_weights(
         selected_indices = np.where(weights > 1e-6)[0]
         logging.info(f"Selected {len(selected_indices)} candidates with non-zero weight")
     
-    return selected_indices
+    # Extract selected weights and renormalize to sum to 1
+    selected_weights = weights[selected_indices]
+    normalized_weights = selected_weights / selected_weights.sum()
+    logging.info(f"Renormalized weights sum: {normalized_weights.sum():.6f}")
+    
+    return selected_indices, normalized_weights
 
 
 def parse_args() -> argparse.Namespace:
@@ -412,7 +418,7 @@ def main() -> None:
     logging.info(f"  Min weight: {w[w > 1e-6].min() if (w > 1e-6).any() else 0:.6f}")
     
     # Select candidates based on weights
-    selected_indices = select_candidates_by_weights(
+    selected_indices, normalized_weights = select_candidates_by_weights(
         w,
         top_k=args.top_k,
         threshold=args.threshold,
@@ -427,6 +433,7 @@ def main() -> None:
         "weights": w,
         "candidate_keys": candidate_keys,
         "selected_indices": selected_indices,
+        "normalized_weights": normalized_weights,
         "history": history,
         "metadata": metadata,
         "algorithm_params": {

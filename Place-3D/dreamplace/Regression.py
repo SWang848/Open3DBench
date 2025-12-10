@@ -97,7 +97,7 @@ def load_fitness_scores_from_csv(
 
 def load_d_optimal_weights(
     d_opt_results_path: Path,
-) -> Tuple[np.ndarray, list]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Load D-optimal design weights and selected candidate keys from results file.
     Only loads candidates with non-zero weights (selected_candidates).
@@ -107,16 +107,16 @@ def load_d_optimal_weights(
     
     Returns:
         Tuple of (weights, selected_candidate_keys) where:
-        - weights: all weights including zeros
+        - weights: selected weights renormalized to sum to 1
         - selected_candidate_keys: list of candidate keys with non-zero weights
         and they are one-to-one mapped
     """
     data = np.load(d_opt_results_path, allow_pickle=True).item()
     
-    all_weights = data["weights"]  # shape: (N,) - all weights including zeros
+    selected_weights = data["normalized_weights"]  # selected weights renormalized to sum to 1
     selected_indices = data["selected_indices"]
     
-    return all_weights, selected_indices
+    return selected_weights, selected_indices
 
 
 def train_linear_regression(
@@ -267,7 +267,7 @@ def main() -> None:
     d_opt_candidate_keys = []
     if args.d_opt_results and args.d_opt_results.exists():
         logging.info(f"Loading D-optimal weights from {args.d_opt_results}...")
-        all_weights, selected_indices = load_d_optimal_weights(args.d_opt_results)
+        selected_weights, selected_indices = load_d_optimal_weights(args.d_opt_results)
         d_opt_candidate_keys = [candidate_keys[i] for i in selected_indices]
         
         X_matched = X[selected_indices]
@@ -275,7 +275,7 @@ def main() -> None:
         best_fitness = y_matched.min()
         best_candidate_key = d_opt_candidate_keys[y_matched.argmin()]
         logging.info(f"Best fitness score found in D-optimal design: {best_fitness:.4f} for candidate {best_candidate_key}")
-        d_opt_weights = all_weights[selected_indices]
+        d_opt_weights = selected_weights
     else:
         logging.info("No D-optimal weights provided, using uniform weights (standard regression)")
         X_matched = X[[i for i, key in enumerate(candidate_keys)]]
@@ -380,39 +380,6 @@ def main() -> None:
     logging.info(f"  Candidates in union of top {k} (predicted or true): {len(union_keys)}")
     logging.info(f"  Kendall's tau: {tau:.4f}")
     logging.info(f"  p-value: {p_value:.4f}")
-
-    if args.d_opt_results and args.d_opt_results.exists():
-        logging.info("=" * 60)
-        logging.info("Verifying model on rest of data (weight == 0)...")
-        
-        # Find indices where weights are zero (or very small)
-        val_indices = np.where(all_weights <= 1e-6)[0]
-        
-        if len(val_indices) == 0:
-            logging.info("No zero-weight samples found for verification.")
-        else:
-            logging.info(f"Found {len(val_indices)} samples with zero weight for verification")
-            
-            val_candidate_keys = [candidate_keys[i] for i in val_indices]
-            X_val = X[val_indices]
-            
-            # Get real fitness scores for these candidates
-            y_val_real = np.array([fitness_dict[key] for key in val_candidate_keys])
-            
-            # Predict using trained model
-            y_val_pred = model.predict(X_val)
-            
-            # Calculate metrics
-            val_mse = mean_squared_error(y_val_real, y_val_pred)
-            val_rmse = np.sqrt(val_mse)
-            val_mae = mean_absolute_error(y_val_real, y_val_pred)
-            
-            logging.info("Verification results (comparing predictions vs real metrics):")
-            logging.info(f"  Number of samples: {len(val_indices)}")
-            logging.info(f"  Real fitness range: [{y_val_real.min():.4f}, {y_val_real.max():.4f}], mean: {y_val_real.mean():.4f}")
-            logging.info(f"  Predicted fitness range: [{y_val_pred.min():.4f}, {y_val_pred.max():.4f}], mean: {y_val_pred.mean():.4f}")
-            logging.info(f"  RMSE: {val_rmse:.4f}")
-            logging.info(f"  MAE: {val_mae:.4f}")
 
 if __name__ == "__main__":
     main()
