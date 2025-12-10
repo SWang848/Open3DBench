@@ -95,7 +95,7 @@ def plot_pareto_front(
 
     plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
     plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
-    plt.title(f"Pareto Front: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
     plt.grid(True, alpha=0.3)
 
     cbar = plt.colorbar(scatter)
@@ -129,7 +129,7 @@ def plot_pareto_front(
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    logging.info("Pareto front plot saved to '%s'", save_path)
+    logging.info("Pareto Archive plot saved to '%s'", save_path)
     plt.close()
         
 def get_power(data):
@@ -534,18 +534,31 @@ if __name__ == "__main__":
         dataframes.append(df)
     
     final_df = pd.concat(dataframes, ignore_index=True)
+    baseline_performance = [0.132, 3815933.0, -6.972, -9955.35, 1.048]
     metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
     # metrics_to_normalize = ["DRT_WL"]
+    
+    # Create baseline row with baseline performance values
+    # baseline_row = {col: None for col in final_df.columns}
+    # baseline_row['Idx'] = 'baseline'
+    # for i, metric in enumerate(metrics_to_normalize):
+    #     if metric in final_df.columns:
+    #         baseline_row[metric] = baseline_performance[i]
+    
+    # Convert baseline_row to DataFrame and append to final_df
+    # baseline_df = pd.DataFrame([baseline_row])
+    # final_df = pd.concat([final_df, baseline_df], ignore_index=True)
+    
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
     final_df.to_csv(f'final.csv', index=False)
 
-    # plot_path = os.path.join(dir_path, "cutsize_imbalance_DRTWL.png")
-    # plot_pareto_front(
-    #     final_df,
-    #     x_col="Cut_size",
-    #     y_col="Area_imbalance",
-    #     fitness_col="Fitness",
-    #     save_path=plot_path,
-    #     # max_points=20,
-    # )
+    plot_path = os.path.join(dir_path, "cutsize_imbalance.png")
+    plot_pareto_front(
+        final_df,
+        x_col="Cut_size",
+        y_col="Area_imbalance",
+        fitness_col="Fitness",
+        save_path=plot_path,
+        # max_points=20,
+    )
