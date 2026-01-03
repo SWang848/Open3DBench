@@ -11,6 +11,8 @@ import copy
 from itertools import combinations
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
+from pathlib import Path
 from sklearn.preprocessing import minmax_scale
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
@@ -74,61 +76,6 @@ def graph_construction(db):
     for edge in edges:
         G.add_edge(edge[0], edge[1])
     return G
-
-def plot_pareto_front(pareto_archive_grid: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]], 
-                      save_path: str = "./pareto_front.png",
-                      candidates: Optional[Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]]] = None) -> None:
-        """
-        Plots the Pareto front showing the trade-off between cutsize and imbalance.
-        
-        Args:
-            pareto_archive_grid: Dictionary with keys (cell_x, cell_y) and values (cost, solution)
-                                 where cost is (cutsize, imbalance)
-            save_path: Path to save the plot image
-            candidates: Optional dictionary of selected candidate points from candidate_selection function
-                       Dictionary with same structure as pareto_archive_grid
-        """
-        
-        # Extract cutsize and imbalance from pareto archive grid values
-        cutsizes = [cost[0] for cost, _ in pareto_archive_grid.values()]
-        imbalances = [cost[1] for cost, _ in pareto_archive_grid.values()]
-        
-        # Create the plot
-        plt.figure(figsize=(10, 6))
-        plt.scatter(cutsizes, imbalances, c='blue', s=100, alpha=0.6, edgecolors='black', linewidths=1.5, label='All Solutions')
-        
-        # Plot candidate points in red if provided
-        if candidates is not None and len(candidates) > 0:
-            candidate_cutsizes = [cost[0] for cost, _ in candidates.values()]
-            candidate_imbalances = [cost[1] for cost, _ in candidates.values()]
-            plt.scatter(candidate_cutsizes, candidate_imbalances, c='red', s=150, alpha=0.8, 
-                       edgecolors='darkred', linewidths=2, marker='*', label='Selected Candidates', zorder=5)
-        
-        # Sort points for connecting line
-        sorted_points = sorted(zip(cutsizes, imbalances))
-        sorted_cutsizes, sorted_imbalances = zip(*sorted_points)
-        plt.plot(sorted_cutsizes, sorted_imbalances, 'gray', linestyle='--', alpha=0.3, linewidth=1)
-        
-        plt.xlabel('Cutsize', fontsize=12, fontweight='bold')
-        plt.ylabel('Imbalance', fontsize=12, fontweight='bold')
-        plt.title('Grid-based Pareto Front: Cutsize vs Imbalance', fontsize=14, fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        plt.legend(loc='upper right', fontsize=10)
-        
-        # Add annotation for number of solutions
-        annotation_text = f'Total Solutions: {len(pareto_archive_grid)}'
-        if candidates is not None:
-            annotation_text += f'\nCandidates: {len(candidates)}'
-        plt.text(0.02, 0.98, annotation_text, 
-                transform=plt.gca().transAxes, 
-                fontsize=10, 
-                verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-        
-        plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        logging.info(f"Pareto front plot saved to '{save_path}'")
-        plt.close()
         
 class HierarchyNode:
     """
@@ -159,14 +106,14 @@ class HierarchyTree:
     """
     reads a .def file and a networkx graph to construct the tree from hierarchy information.
     """
-    def __init__(self, placedb: PlaceDB) -> None:
+    def __init__(self, placedb: PlaceDB, case_name: str) -> None:
         self.placedb: PlaceDB = placedb
         self.root: HierarchyNode = HierarchyNode(hierarchy_name="root")
 
         self.construct_hierarchy_tree()
         self._calculate_cluster_areas(self.root)
         # Plot the hierarchy tree structure
-        self.save_ascii_tree("./hierarchy_tree.txt")
+        self.save_ascii_tree(os.path.join(f"./hmsa_results/{case_name}", "hierarchy_tree.txt"))
         
     def construct_hierarchy_tree(self) -> None:        
         for node_name in self.placedb.node_names:
@@ -269,10 +216,10 @@ class HierarchyTree:
             print(f"\nError saving ASCII tree to '{save_path}': {e}")    
 
 class HMSA:
-    def __init__(self, G:nx.MultiGraph, placedb: PlaceDB, grid_size: int=40, def_file_path: str=None) -> None:
+    def __init__(self, G:nx.MultiGraph, placedb: PlaceDB, case_name: str, grid_size: int=40) -> None:
         self.G: nx.MultiGraph = G
         self.placedb: PlaceDB = placedb
-        self.hierarchy_tree: HierarchyTree = HierarchyTree(placedb)
+        self.hierarchy_tree: HierarchyTree = HierarchyTree(placedb, case_name)
         self.root = self.hierarchy_tree.root
         self.total_area = self.hierarchy_tree.root.total_area
         self.nodes_by_level = self.hierarchy_tree.get_nodes_by_level()
@@ -281,10 +228,7 @@ class HMSA:
         self.current_solution = [[], []] # [bottom_die_macros_ids, upper_die_macros_ids]
         self.pareto_archive_grid = {} # keys: (cell_x, cell_y), values: (cost, solution)
         self.grid_size = grid_size
-        if def_file_path is not None:
-            self.read_partition_result(def_file_path)
-        else:
-            self._initial_partition()
+        self._initial_partition()
 
         self.current_total_cutsize = self._calculate_initial_cutsize()
         self.current_imbalance = self._get_imbalance_metric()
@@ -295,40 +239,6 @@ class HMSA:
             'log_imbalance': {'min': log_imbalance, 'max': log_imbalance}
         }
         self._update_pareto_archive((self.current_total_cutsize, self.current_imbalance), self.current_solution)
-    
-    def read_partition_result(self, def_file_path: str):
-        upper_macros_ids = []
-        partitions = {}
-        indicator = False
-        
-        with open(def_file_path, 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                if 'COMPONENTS' in line:
-                    indicator = True
-                    if 'END' in line:
-                        indicator = False
-                
-                if indicator:
-                    if 'fakeram' in line and 'upper' in line:
-                        name = line.split()[1]
-                        node_id = self.placedb.node_name2id_map[name]
-                        upper_macros_ids.append(node_id)
-        
-        for node_id in self.G.nodes():
-            node_area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
-            if self.G.nodes[node_id].get('is_macro'):
-                if node_id in upper_macros_ids:
-                    partitions[node_id] = {'partition': UPPER_DIE}
-                    self.current_area_balance[UPPER_DIE] += node_area
-                    self.current_solution[UPPER_DIE].append(node_id)
-                else:
-                    partitions[node_id] = {'partition': BOTTOM_DIE}
-                    self.current_area_balance[BOTTOM_DIE] += node_area
-                    self.current_solution[BOTTOM_DIE].append(node_id)
-            else:
-                self.current_area_balance[BOTTOM_DIE] += node_area
-        nx.set_node_attributes(self.G, partitions)
                             
     def _initial_partition(self):
         partitions = {}
@@ -663,57 +573,35 @@ class HMSA:
         logging.info(f"Saved regression dataset with {len(history)} samples to {output_path}")
         return history
     
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Hierarchy-aware Multi-Objective Simulated Annealing.")
+    parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
+    parser.add_argument("--output", type=Path, default=None, help="Path to save HMSA results.")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return parser.parse_args()
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()))
     
-if __name__ == "__main__":
-    """
-    @brief main function to test Hierarchy-aware Multi-Objective Simulated Annealing pipeline.
-    """
-    logging.root.name = 'HMSA'
-    logging.basicConfig(level=logging.INFO,
-                        format='[%(levelname)-7s] %(name)s - %(message)s',
-                        stream=sys.stdout)
-                        
     params = Params.Params()
-    params.printWelcome()
     
-    if len(sys.argv) == 1 or '-h' in sys.argv[1:] or '--help' in sys.argv[1:]:
-        params.printHelp()
-        print("\nAdditional arguments:")
-        print("  def_file    (optional) Path to DEF file with initial partition")
-        exit()
-    elif len(sys.argv) < 2 or len(sys.argv) > 3:
-        logging.error("Usage: python HMSA.py <params.json> [def_file]")
-        params.printHelp()
-        print("\nAdditional arguments:")
-        print("  def_file    (optional) Path to DEF file with initial partition")
-        exit()
-    
-    case_name = sys.argv[1].split("/")[-1].split(".")[0]
+    case_name = args.params.stem
     out_dir = f"./hmsa_results/{case_name}"
     os.makedirs(out_dir, exist_ok=True)
-
-    # load parameters
-    params.load(sys.argv[1])
     
-    # Get optional def_file argument
-    def_file = sys.argv[2] if len(sys.argv) == 3 else None
-    if def_file:
-        logging.info(f"Using initial partition from DEF file: {def_file}")
+    # load parameters
+    params.load(args.params)
     params.placed_def_input = ""
     logging.info("parameters loaded successfully")
     
-    # control numpy multithreading
-    os.environ["OMP_NUM_THREADS"] = "%d" % (params.num_threads)
-
-    # Initialize placement database
-    tt = time.time()
     placedb = PlaceDB.PlaceDB()
     placedb(params)
     
     logging.info(f"Found {placedb.num_physical_nodes - placedb.num_terminal_NIs} positioned components")
     
     G = graph_construction(placedb)
-    hmsa = HMSA(G, placedb, def_file_path=def_file)
+    hmsa = HMSA(G, placedb, case_name=case_name)
     # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
     pareto_archive = hmsa.run_annealing()
@@ -734,7 +622,6 @@ if __name__ == "__main__":
     # # Update archive and candidates after refinement
     pareto_archive = hmsa.pareto_archive_grid
     print([(key, value[0]) for key, value in pareto_archive.items()])
-    print(time.time() - tt)
     # Save pareto_archive to a single file
     results_path = os.path.join(out_dir, "hmsa_results.json")
     results = {
@@ -746,7 +633,6 @@ if __name__ == "__main__":
     with open(results_path, 'w') as f:
         json.dump(results, f, indent=2)
     logging.info(f"HMSA results (Pareto archive and candidates) saved to {results_path}")
-   
-    # Plot and save the Pareto front with candidates highlighted
-    # pareto_plot_path = os.path.join(out_dir, "pareto_front.png")
-    # plot_pareto_front(pareto_archive, pareto_plot_path, candidates)
+    
+if __name__ == "__main__":
+    main()
