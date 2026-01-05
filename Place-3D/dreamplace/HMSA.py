@@ -76,6 +76,77 @@ def graph_construction(db):
     for edge in edges:
         G.add_edge(edge[0], edge[1])
     return G
+
+def plot_pareto_front(
+    pareto_archive: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]],
+    save_path: str,
+    x_col: str = "Cut_size",
+    y_col: str = "Area_imbalance",
+) -> None:
+    """
+    Plot the Pareto front using pareto_archive.
+
+    Args:
+        pareto_archive: Pareto archive dictionary with keys (cell_x, cell_y) and values (cost, solution)
+        save_path: Destination path for the generated plot.
+        x_col: Label for the x-axis.
+        y_col: Label for the y-axis.
+    """
+
+    if not pareto_archive:
+        logging.warning("pareto_archive is empty. Skipping Pareto plot generation.")
+        return
+    
+    x_values = []
+    y_values = []
+    for key, value in pareto_archive.items():
+        cost, solution = value
+        x_values.append(cost[0])
+        y_values.append(cost[1])
+
+    if not x_values:
+        logging.warning("No valid data points to plot in Pareto front.")
+        return
+
+    plt.figure(figsize=(10, 6))
+    scatter = plt.scatter(
+        x_values,
+        y_values,
+        s=110,
+        alpha=0.85,
+        edgecolors="black",
+        linewidths=0.8,
+    )
+
+    sorted_points = sorted(zip(x_values, y_values))
+    if sorted_points:
+        sorted_x, sorted_y = zip(*sorted_points)
+        plt.plot(sorted_x, sorted_y, color="gray", linestyle="--", alpha=0.35, linewidth=1)
+
+    def _format_label(col_name: str) -> str:
+        return col_name.replace("_", " ").title()
+
+    plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
+    plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
+    plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    plt.grid(True, alpha=0.3)
+
+    ax = plt.gca()
+    plt.text(
+        0.02,
+        0.98,
+        f"Points: {len(x_values)}",
+        transform=ax.transAxes,
+        fontsize=10,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.55),
+    )
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    logging.info("Pareto Archive plot saved to '%s'", save_path)
+    plt.close()
+        
         
 class HierarchyNode:
     """
@@ -109,20 +180,29 @@ class HierarchyTree:
     def __init__(self, placedb: PlaceDB, case_name: str) -> None:
         self.placedb: PlaceDB = placedb
         self.root: HierarchyNode = HierarchyNode(hierarchy_name="root")
-
         self.construct_hierarchy_tree()
         self._calculate_cluster_areas(self.root)
         # Plot the hierarchy tree structure
         self.save_ascii_tree(os.path.join(f"./hmsa_results/{case_name}", "hierarchy_tree.txt"))
         
-    def construct_hierarchy_tree(self) -> None:        
+    def construct_hierarchy_tree(self) -> None:
+        area_sum = 0
+        num_nodes = 0
         for node_name in self.placedb.node_names:
             node_id = self.placedb.node_name2id_map[node_name.decode('utf-8')]
-            if 'macro' in node_name.decode('utf-8') and self.placedb.node_size_y[node_id] > self.placedb.row_height * 2:
+            if node_id < (self.placedb.num_physical_nodes - self.placedb.num_terminal_NIs):
+                area_sum += self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
+                num_nodes += 1
+        mean_node_area = area_sum / num_nodes
+        
+        for node_name in self.placedb.node_names:
+            node_id = self.placedb.node_name2id_map[node_name.decode('utf-8')]
+            node_area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
+            if node_area > mean_node_area * 10 and self.placedb.node_size_y[node_id] > self.placedb.row_height * 2:
                 hierarchy_path = node_name.decode('utf-8').split("__")
-                self._add_node_from_path(hierarchy_path, node_id)
+                self._add_node_from_path(hierarchy_path, node_id, node_area)
 
-    def _add_node_from_path(self, hierarchy_path: List[str], node_id: int) -> None:
+    def _add_node_from_path(self, hierarchy_path: List[str], node_id: int, node_area: float) -> None:
         """
         It walks the tree and adds nodes
         """
@@ -150,7 +230,7 @@ class HierarchyTree:
                 current_node = new_node
         
         current_node.node_id = node_id
-        current_node.total_area = self.placedb.node_size_x[node_id] * self.placedb.node_size_y[node_id]
+        current_node.total_area = node_area
     
     def _calculate_cluster_areas(self, node: HierarchyNode) -> None:
         if node.is_leaf:
@@ -622,6 +702,8 @@ def main() -> None:
     # # Update archive and candidates after refinement
     pareto_archive = hmsa.pareto_archive_grid
     print([(key, value[0]) for key, value in pareto_archive.items()])
+    # Plot pareto front
+    plot_pareto_front(pareto_archive, os.path.join(out_dir, "pareto_front.png"))
     # Save pareto_archive to a single file
     results_path = os.path.join(out_dir, "hmsa_results.json")
     results = {
