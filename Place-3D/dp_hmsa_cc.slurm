@@ -24,7 +24,11 @@ apptainer exec --nv \
     dreamplace.sif \
     bash -lc "
         REPO=/workspace/install
-        OUT_BASE=/scratch/${USER}/HMSA_solution_eval/${DESIGN_NAME}/${IDX}
+        DESIGN_NAME=\"${DESIGN_NAME}\"
+        CASE_NAME=\"${CASE_NAME}\"
+        IDX=\"${IDX}\"
+        
+        OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}_3D/\${IDX}
         mkdir -p \"\${OUT_BASE}\"
 
         # per-task isolated working directory to avoid ./results conflicts
