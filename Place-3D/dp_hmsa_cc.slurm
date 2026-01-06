@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_gpu
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=8G
 #SBATCH --gres=gpu:1
 #SBATCH --array=0-7%8
 #SBATCH --output=logs/%x-%A_%a.out
@@ -15,6 +15,8 @@ DESIGN_NAME="bp_be_3D"
 CASE_NAME="bp_be"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
+# Load CUDA module for GPU support
+module load cuda/12.6
 module load apptainer
 
 # workspace is \Place-3D directory
@@ -46,8 +48,11 @@ apptainer exec --nv \
         ln -sf \"\${REPO}/benchmarks/nangate45_3D\" \"\${WORK}/benchmarks/nangate45_3D\" || true
         ln -sf \"\${REPO}/thirdparty\" \"\${WORK}/thirdparty\" || true
 
-        nvidia-smi -L || true
-
+        # Check GPU availability
+        echo \"=== Checking GPU availability ===\"
+        nvidia-smi -L || echo \"WARNING: nvidia-smi failed\"
+        nvcc --version || echo \"WARNING: nvcc not found\"
+        
         # Copy hmsa_results.json to WORK directory
         mkdir -p \"\${WORK}/hmsa_results/\${DESIGN_NAME}\"
         if [ ! -f \"\${REPO}/hmsa_results/\${DESIGN_NAME}/hmsa_results.json\" ]; then
@@ -56,10 +61,12 @@ apptainer exec --nv \
             exit 1
         fi
         cp \"\${REPO}/hmsa_results/\${DESIGN_NAME}/hmsa_results.json\" \"\${WORK}/hmsa_results/\${DESIGN_NAME}/\"
+        
+        # Run with GPU enabled (JSON already has gpu: 1)
         python \"\${REPO}/dreamplace/Placer_3D_hmsa.py\" \
             \"\${REPO}/test/or_3D/\${DESIGN_NAME}.json\" \
             \"\${IDX}\"
 
-        cp -r \"\${WORK}/results/${DESIGN_NAME}/\"* \"\${OUT_BASE}/\"
+        cp -r \"\${WORK}/results/\${DESIGN_NAME}/\"* \"\${OUT_BASE}/\" || true
         echo \"done. Outputs in: \${OUT_BASE}\"
     "
