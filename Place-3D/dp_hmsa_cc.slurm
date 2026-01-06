@@ -48,10 +48,21 @@ apptainer exec --nv \
         ln -sf \"\${REPO}/benchmarks/nangate45_3D\" \"\${WORK}/benchmarks/nangate45_3D\" || true
         ln -sf \"\${REPO}/thirdparty\" \"\${WORK}/thirdparty\" || true
 
-        # Check GPU availability
+        # Check GPU availability and CUDA/PyTorch versions
         echo \"=== Checking GPU availability ===\"
         nvidia-smi -L || echo \"WARNING: nvidia-smi failed\"
         nvcc --version || echo \"WARNING: nvcc not found\"
+        echo \"=== Checking PyTorch CUDA version ===\"
+        python -c \"
+import torch
+print(f'PyTorch version: {torch.__version__}')
+print(f'PyTorch CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'PyTorch CUDA version: {torch.version.cuda}')
+    print(f'cuDNN version: {torch.backends.cudnn.version()}')
+    print(f'GPU device: {torch.cuda.get_device_name(0)}')
+    print(f'GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB')
+\" || echo \"WARNING: PyTorch check failed\"
         
         # Copy hmsa_results.json to WORK directory
         mkdir -p \"\${WORK}/hmsa_results/\${DESIGN_NAME}\"
