@@ -16,7 +16,7 @@ CASE_NAME="bp_be"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 # Load CUDA module for GPU support
-module load cuda
+module load cuda/12.6
 module load apptainer
 
 # workspace is \Place-3D directory
@@ -30,6 +30,11 @@ apptainer exec --nv \
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
         
+        cd /workspace/build
+        cmake ..
+        make -j 8
+        make -j 8 install
+
         OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}_3D/\${IDX}
         mkdir -p \"\${OUT_BASE}\"
 
