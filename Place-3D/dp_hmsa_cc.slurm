@@ -29,11 +29,6 @@ apptainer exec --nv \
         DESIGN_NAME=\"${DESIGN_NAME}\"
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
-        
-        cd /workspace/build
-        cmake ..
-        make -j 8
-        make -j 8 install
 
         OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}_3D/\${IDX}
         mkdir -p \"\${OUT_BASE}\"
