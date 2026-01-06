@@ -16,7 +16,7 @@ CASE_NAME="bp_be"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 # Load CUDA module for GPU support
-module load cuda/12.6
+module load cuda
 module load apptainer
 
 # workspace is \Place-3D directory
