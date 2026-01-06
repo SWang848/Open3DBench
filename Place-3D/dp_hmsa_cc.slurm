@@ -1,0 +1,59 @@
+#!/bin/bash
+#SBATCH --job-name=hmsa3d_gpu
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --gres=gpu:1
+#SBATCH --array=0-81%8
+#SBATCH --output=logs/%x-%A_%a.out
+#SBATCH --error=logs/%x-%A_%a.err
+
+set -euo pipefail
+mkdir -p logs
+
+DESIGN_NAME="bp_be_3D"
+CASE_NAME="bp_be"
+IDX="${SLURM_ARRAY_TASK_ID}"
+
+module load apptainer
+
+# workspace is \Place-3D directory
+apptainer exec --nv \
+    --bind "${SLURM_SUBMIT_DIR}:/workspace" \
+    --bind "${SCRATCH}:/scratch" \
+    dreamplace.sif \
+    bash -lc "
+
+        REPO=/workspace/install
+        OUT_BASE=/scratch/${USER}/HMSA_solution_eval/${DESIGN_NAME}_3D/${IDX}
+        mkdir -p \"\${OUT_BASE}\"
+
+
+        # per-task isolated working directory to avoid ./results conflicts
+        WORK=/scratch/${USER}/hmsa_dp_results/${DESIGN_NAME}_${IDX}
+        rm -rf \"\${WORK}\"
+        mkdir -p \"\${WORK}\"
+        cd \"\${WORK}\"
+
+        # Create intermediate_result directory in WORK directory
+        mkdir -p \"\${WORK}/benchmarks/or_3D/intermediate_result\"
+        
+        # Symlink input directories from REPO (read-only, safe for parallel execution)
+        ln -sf \"\${REPO}/benchmarks/or_3D/\${CASE_NAME}\" \"\${WORK}/benchmarks/or_3D/\${CASE_NAME}\" || true
+        ln -sf \"\${REPO}/benchmarks/nangate45\" \"\${WORK}/benchmarks/nangate45\" || true
+        ln -sf \"\${REPO}/benchmarks/nangate45_3D\" \"\${WORK}/benchmarks/nangate45_3D\" || true
+        ln -sf \"\${REPO}/thirdparty\" \"\${WORK}/thirdparty\" || true
+
+        nvidia-smi -L || true
+
+        # Copy hmsa_results.json to WORK directory
+        mkdir -p \"\${WORK}/hmsa_results/\${DESIGN_NAME}\"
+        cp \"\${REPO}/hmsa_results/\${DESIGN_NAME}/hmsa_results.json\" \"\${WORK}/hmsa_results/\${DESIGN_NAME}/\"
+
+        python \"\${REPO}/dreamplace/Placer_3D_hmsa.py\" \
+            \"\${REPO}/test/or_3D/${DESIGN_NAME}.json\" \
+            \"${IDX}\"
+
+        cp -r \"\${WORK}/results/${DESIGN_NAME}/\"* \"\${OUT_BASE}/\"
+        echo \"done. Outputs in: \${OUT_BASE}\"
+    "
