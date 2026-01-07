@@ -31,7 +31,7 @@ apptainer exec \
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
 
-        OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}_3D/\${IDX}
+        OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}/\${IDX}
         mkdir -p \"\${OUT_BASE}\"
 
         # per-task isolated working directory to avoid ./results conflicts
