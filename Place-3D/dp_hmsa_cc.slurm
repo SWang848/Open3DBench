@@ -59,6 +59,6 @@ apptainer exec \
             \"\${REPO}/test/or_3D/\${DESIGN_NAME}.json\" \
             \"\${IDX}\"
 
-        cp -r \"\${WORK}/results/\${DESIGN_NAME}/\"* \"\${OUT_BASE}/\" || true
+        cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${OUT_BASE}/\" || true
         echo \"done. Outputs in: \${OUT_BASE}\"
     "
