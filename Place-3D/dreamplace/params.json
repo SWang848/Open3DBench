@@ -31,7 +31,7 @@
     },
 "gpu" : {
     "description" : "enable gpu or not", 
-    "default" : 1
+    "default" : 0
     },
 "num_bins_x" : {
     "description" : "number of bins in horizontal direction; computed by internal heuristic if not specified", 
