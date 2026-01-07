@@ -16,7 +16,9 @@ CASE_NAME="bp_be"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 # Load CUDA module for GPU support
-module load cuda/12.6
+module load StdEnv/2023
+module load intel/2023.2.1
+module load cuda/11.8
 module load apptainer
 
 # workspace is \Place-3D directory
@@ -47,22 +49,6 @@ apptainer exec --nv \
         ln -sf \"\${REPO}/benchmarks/nangate45\" \"\${WORK}/benchmarks/nangate45\" || true
         ln -sf \"\${REPO}/benchmarks/nangate45_3D\" \"\${WORK}/benchmarks/nangate45_3D\" || true
         ln -sf \"\${REPO}/thirdparty\" \"\${WORK}/thirdparty\" || true
-
-        # Check GPU availability and CUDA/PyTorch versions
-        echo \"=== Checking GPU availability ===\"
-        nvidia-smi -L || echo \"WARNING: nvidia-smi failed\"
-        nvcc --version || echo \"WARNING: nvcc not found\"
-        echo \"=== Checking PyTorch CUDA version ===\"
-        python -c \"
-import torch
-print(f'PyTorch version: {torch.__version__}')
-print(f'PyTorch CUDA available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'PyTorch CUDA version: {torch.version.cuda}')
-    print(f'cuDNN version: {torch.backends.cudnn.version()}')
-    print(f'GPU device: {torch.cuda.get_device_name(0)}')
-    print(f'GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB')
-\" || echo \"WARNING: PyTorch check failed\"
         
         # Copy hmsa_results.json to WORK directory
         mkdir -p \"\${WORK}/hmsa_results/\${DESIGN_NAME}\"
