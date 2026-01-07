@@ -3,21 +3,17 @@
 #SBATCH --time=00:20:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=4G
-#SBATCH --array=0-1%2
+#SBATCH --array=0-108%16
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
 set -euo pipefail
 mkdir -p logs
 
-DESIGN_NAME="bp_be_3D"
-CASE_NAME="bp_be"
+DESIGN_NAME="bp_3D"
+CASE_NAME="bp"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
-# Load CUDA module for GPU support
-module load StdEnv/2023
-module load intel/2023.2.1
-module load cuda/11.8
 module load apptainer
 
 # workspace is \Place-3D directory
