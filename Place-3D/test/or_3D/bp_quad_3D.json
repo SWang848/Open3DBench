@@ -54,7 +54,7 @@
 "verilog_input" : "benchmarks/or_3D/bp_quad/bp_quad_3D.v",
 "timing_report_input" : "results/bp_quad_2D/post_place_timing_setup.rpt",
 "placed_def_input" : "results/bp_quad_2D/bp_quad_2D.gp.def",
-"gpu" : 1,
+"gpu" : 0,
 "num_bins_x" : 1024,
 "num_bins_y" : 1024,
 "global_place_stages" : [
