@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_gpu
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=4G
 #SBATCH --array=0-1%2
 #SBATCH --output=logs/%x-%A_%a.out
