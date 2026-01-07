@@ -3,15 +3,15 @@
 #SBATCH --time=00:20:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=4G
-#SBATCH --array=0-72%16
+#SBATCH --array=0-57%16
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
 set -euo pipefail
 mkdir -p logs
 
-DESIGN_NAME="bp_fe_3D"
-CASE_NAME="bp_fe"
+DESIGN_NAME="bp_quad_3D"
+CASE_NAME="bp_quad"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 module load apptainer
