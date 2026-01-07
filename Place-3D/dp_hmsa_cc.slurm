@@ -3,7 +3,6 @@
 #SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --gres=gpu:1
 #SBATCH --array=0-1%2
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
@@ -22,7 +21,7 @@ module load cuda/11.8
 module load apptainer
 
 # workspace is \Place-3D directory
-apptainer exec --nv \
+apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
     --bind "${SCRATCH}:/scratch" \
     dreamplace.sif \
