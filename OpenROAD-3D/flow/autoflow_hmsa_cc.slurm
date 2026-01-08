@@ -153,6 +153,21 @@ apptainer exec \
 
         # Generate metrics for this specific solution
         echo \"Generating metrics for solution index: \${IDX}\"
+        # get_metrics.py expects logs/nangate45 and logs/nangate45_3D to exist
+        # Create logs/nangate45 if it doesn't exist (for 2D methods, even if empty)
+        mkdir -p \"logs/nangate45\" || true
+        # Ensure logs/nangate45_3D exists with the design directory
+        if [ ! -d \"logs/nangate45_3D\" ]; then
+          echo \"ERROR: logs/nangate45_3D directory not found\"
+          ls -la logs/ || true
+          exit 6
+        fi
+        # Check if the design directory exists
+        if [ ! -d \"logs/nangate45_3D/\${CASE_NAME}\" ]; then
+          echo \"ERROR: logs/nangate45_3D/\${CASE_NAME} directory not found\"
+          ls -la logs/nangate45_3D/ || true
+          exit 7
+        fi
         python3 scripts_3D/get_metrics.py
 
         # Create directories for storing results in solution folder
