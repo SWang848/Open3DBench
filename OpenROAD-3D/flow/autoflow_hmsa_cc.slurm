@@ -13,6 +13,9 @@ mkdir -p logs
 # Configuration - adjust these as needed
 CASE_NAME="bp_be"
 DESIGN_NAME="bp_be_top"
+DESIGN_DIMENSION="3D"
+DEF_VERSION=${CASE_NAME}
+
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 module load apptainer
@@ -28,6 +31,8 @@ apptainer exec \
         FLOW_DIR=/workspace
         CASE_NAME=\"${CASE_NAME}\"
         DESIGN_NAME=\"${DESIGN_NAME}\"
+        DESIGN_DIMENSION=\"${DESIGN_DIMENSION}\"
+        DEF_VERSION=\"${DEF_VERSION}\"
         IDX=\"${IDX}\"
         
         HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
