@@ -30,9 +30,9 @@ apptainer exec \
         
         FLOW_DIR=/workspace
         CASE_NAME=\"${CASE_NAME}\"
-        DESIGN_NAME=\"${DESIGN_NAME}\"
-        DESIGN_DIMENSION=\"${DESIGN_DIMENSION}\"
-        DEF_VERSION=\"${DEF_VERSION}\"
+        export DESIGN_NAME=\"${DESIGN_NAME}\"
+        export DESIGN_DIMENSION=\"${DESIGN_DIMENSION}\"
+        export DEF_VERSION=\"${DEF_VERSION}\"
         IDX=\"${IDX}\"
         
         HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
