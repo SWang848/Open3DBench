@@ -30,7 +30,7 @@ apptainer exec \
         DESIGN_NAME=\"${DESIGN_NAME}\"
         IDX=\"${IDX}\"
         
-        HMSA_BASE_DIR=\${FLOW_DIR}/../../HMSA_solution_eval/\${CASE_NAME}
+        HMSA_BASE_DIR=\${FLOW_DIR}/../../HMSA_solution_eval/\${CASE_NAME}_3D
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
         DEF_FILE=\${SOLUTION_DIR}/\${CASE_NAME}_3D.gp.def
         
