@@ -25,6 +25,7 @@ module load apptainer
 #     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
 apptainer exec \
     --bind "${PWD}:/workspace" \
+    --bind "${SCRATCH}:/scratch" \
     openroad.sif \
     bash -lc "
         set -euo pipefail
