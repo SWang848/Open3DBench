@@ -45,16 +45,16 @@ apptainer exec \
         
         # Symlink read-only directories (safe for parallel execution, saves copy time)
         echo \"Creating symlinks for read-only directories...\"
-        ln -sf \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\" || true
-        ln -sf \"\${FLOW_DIR}/platforms\" \"\${WORK_DIR}/platforms\" || true
-        ln -sf \"\${FLOW_DIR}/scripts\" \"\${WORK_DIR}/scripts\" || true
-        ln -sf \"\${FLOW_DIR}/scripts_3D\" \"\${WORK_DIR}/scripts_3D\" || true
-        ln -sf \"\${FLOW_DIR}/util\" \"\${WORK_DIR}/util\" || true
-        ln -sf \"\${FLOW_DIR}/tutorials\" \"\${WORK_DIR}/tutorials\" || true
+        ln -sf \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\" 
+        ln -sf \"\${FLOW_DIR}/platforms\" \"\${WORK_DIR}/platforms\"
+        ln -sf \"\${FLOW_DIR}/scripts\" \"\${WORK_DIR}/scripts\"
+        ln -sf \"\${FLOW_DIR}/scripts_3D\" \"\${WORK_DIR}/scripts_3D\"
+        ln -sf \"\${FLOW_DIR}/util\" \"\${WORK_DIR}/util\"
+        ln -sf \"\${FLOW_DIR}/tutorials\" \"\${WORK_DIR}/tutorials\"
         
         # Create designs directory structure and symlink read-only parts
-        mkdir -p \"\${WORK_DIR}/designs/\"
-        ln -sf \"\${FLOW_DIR}/designs/nangate45/\" \"\${WORK_DIR}/designs/nangate45/\"
+        mkdir -p \"\${WORK_DIR}/designs\"
+        ln -sf \"\${FLOW_DIR}/designs/nangate45\" \"\${WORK_DIR}/designs/nangate45\"
         # Create nangate45_3D directory and symlink all designs except the one we need to modify
         mkdir -p \"\${WORK_DIR}/designs/nangate45_3D\"
         # Copy only the specific design directory we need to modify
