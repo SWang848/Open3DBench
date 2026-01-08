@@ -90,6 +90,32 @@ apptainer exec \
         if grep -q \"genElapsedTime.py\" \"\${WORK_DIR}/Makefile\"; then
           sed -i 's|\\\$(UTILS_DIR)/genElapsedTime.py|python3 \\\$(UTILS_DIR)/genElapsedTime.py|g' \"\${WORK_DIR}/Makefile\"
         fi
+        
+        # -----------------------------
+        # FIX 1b: Patch Makefile to fix run.sh Python script calls
+        # The run.sh script calls Python scripts directly (e.g., ../../scripts/split_grid_steady.py)
+        # which fails on noexec filesystems. Fix it to use python3.
+        # -----------------------------
+        # Use Python to reliably patch the Makefile to add a step that fixes run.sh
+        python3 << PYTHON_EOF
+import re
+makefile_path = \"\${WORK_DIR}/Makefile\"
+with open(makefile_path, 'r') as f:
+    content = f.read()
+
+# Find the line with chmod +x run.sh and add a sed step before ./run.sh
+# Match: chmod +x run.sh &&\n\t\t./run.sh
+pattern = r'(chmod \+x run\\.sh &&[\\s\\n]*)(\\./run\\.sh)'
+replacement = r'\\1sed -i \"s|^../../scripts/\\(split_grid_steady\\.py\\|temp_tran\\.py\\|grid_thermal_map\\.py\\)|python3 ../../scripts/\\1|g\" run.sh && \\\\\n\t\t\\2'
+
+if re.search(pattern, content):
+    content = re.sub(pattern, replacement, content)
+    with open(makefile_path, 'w') as f:
+        f.write(content)
+    print(\"Patched Makefile to fix run.sh Python script calls\")
+else:
+    print(\"Warning: Could not find chmod +x run.sh pattern in Makefile\")
+PYTHON_EOF
 
         # Create output directories (fresh for each task)
         mkdir -p \"\${WORK_DIR}/logs\" \"\${WORK_DIR}/results\" \"\${WORK_DIR}/reports\" \"\${WORK_DIR}/objects\"
