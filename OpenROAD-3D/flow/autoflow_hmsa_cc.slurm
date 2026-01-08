@@ -88,6 +88,17 @@ apptainer exec \
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk clean_all || true
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk clean_all || true
         
+        DESIGN_NICKNAME=\$(grep '^export DESIGN_NICKNAME' designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk | sed 's/.*= *//' | tr -d ' ')
+        RESULTS_DIR=\${WORK_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
+        mkdir -p \${RESULTS_DIR}
+        
+        # Copy 1_synth.sdc from flow folder to work folder (needed by do-pre_cts)
+        # The 3D flow uses pre-placed DEF files via init_odb.tcl, skipping synthesis
+        # So we copy the existing 1_synth.sdc from the original flow results
+        FLOW_RESULTS_DIR=\${FLOW_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
+        cp \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" \"\${RESULTS_DIR}/1_synth.sdc\"
+        echo \"Copied 1_synth.sdc from \${FLOW_RESULTS_DIR} to \${RESULTS_DIR}\"
+        
         # Run make commands for this solution
         echo \"Running autoflow for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk do-autoflow
