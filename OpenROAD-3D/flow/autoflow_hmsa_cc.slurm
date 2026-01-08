@@ -21,6 +21,7 @@ module load apptainer
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
     --bind "${SCRATCH}:/scratch" \
+    --bind "${HMSA_ROOT}:/hmsa_solutions" \
     openroad.sif \
     bash -lc "
         set -euo pipefail
@@ -30,7 +31,7 @@ apptainer exec \
         DESIGN_NAME=\"${DESIGN_NAME}\"
         IDX=\"${IDX}\"
         
-        HMSA_BASE_DIR=\${FLOW_DIR}/../../HMSA_solution_eval/\${CASE_NAME}_3D
+        HMSA_BASE_DIR=/hmsa_solutions/\${CASE_NAME}_3D
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
         DEF_FILE=\${SOLUTION_DIR}/\${CASE_NAME}_3D.gp.def
         
