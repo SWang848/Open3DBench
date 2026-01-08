@@ -80,6 +80,8 @@ apptainer exec \
         # Set up environment variables (same as autoflow.sh)
         export OPENROAD_EXE=\$(command -v openroad || echo openroad)
         export YOSYS_EXE=\$(command -v yosys || echo yosys)
+        export WORK_HOME=\${WORK_DIR}
+        export FLOW_HOME=\${FLOW_DIR}
         
         # Clean previous build artifacts to ensure fresh build for this solution
         echo \"Cleaning previous build artifacts...\"
