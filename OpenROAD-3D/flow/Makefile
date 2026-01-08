@@ -769,7 +769,7 @@ do-hotspot:
 	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/"
 	@chown -R $(USER):$(USER) "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
 	
-	@rsync -a --exclude='*/' \
+	@rsync -a --no-g --exclude='*/' \
 		"$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/" \
 		"$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/"
 	
@@ -783,7 +783,7 @@ do-hotspot:
 		./run.sh
 	
 	@mkdir -p "$(RESULTS_DIR)/hotspot_outputs"
-	@rsync -a --delete \
+	@rsync -a --no-g --delete \
 		"$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/outputs/" \
 		"$(RESULTS_DIR)/hotspot_outputs/" 2>/dev/null || true
 	@chown -R $(USER):$(USER) "$(RESULTS_DIR)/hotspot_outputs"
