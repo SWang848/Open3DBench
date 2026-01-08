@@ -81,7 +81,8 @@ apptainer exec \
         export OPENROAD_EXE=\$(command -v openroad || echo openroad)
         export YOSYS_EXE=\$(command -v yosys || echo yosys)
         export WORK_HOME=\${WORK_DIR}
-        export FLOW_HOME=\${FLOW_DIR}
+        # Note: FLOW_HOME and HOTSPOT_SCRIPTS_DIR are set by Makefile defaults
+        # Since we cd to WORK_DIR, Makefile will use $(shell pwd) = WORK_DIR
         
         # Clean previous build artifacts to ensure fresh build for this solution
         echo \"Cleaning previous build artifacts...\"
