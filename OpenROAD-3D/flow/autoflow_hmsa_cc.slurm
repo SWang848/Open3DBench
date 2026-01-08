@@ -90,19 +90,6 @@ apptainer exec \
         if grep -q \"genElapsedTime.py\" \"\${WORK_DIR}/Makefile\"; then
           sed -i 's|\\\$(UTILS_DIR)/genElapsedTime.py|python3 \\\$(UTILS_DIR)/genElapsedTime.py|g' \"\${WORK_DIR}/Makefile\"
         fi
-        
-        # -----------------------------
-        # After hotspot creates examples/run.sh, we patch it; so do it after rsync/copy.
-        # Easiest: patch all run.sh under HotSpot examples just before do-hotspot runs.
-        find "${WORK_DIR}/HotSpot" -name "run.sh" -type f -print0 | while IFS= read -r -d '' f; do
-          # python scripts
-          sed -i 's|../../scripts/split_grid_steady.py|python3 ../../scripts/split_grid_steady.py|g' "$f"
-          sed -i 's|../../scripts/temp_tran.py|python3 ../../scripts/temp_tran.py|g' "$f"
-          sed -i 's|../../scripts/grid_thermal_map.py|python3 ../../scripts/grid_thermal_map.py|g' "$f"
-          # perl scripts
-          sed -i 's|../../scripts/grid_thermal_map.pl|perl ../../scripts/grid_thermal_map.pl|g' "$f"
-        done
-
 
         # Create output directories (fresh for each task)
         mkdir -p \"\${WORK_DIR}/logs\" \"\${WORK_DIR}/results\" \"\${WORK_DIR}/reports\" \"\${WORK_DIR}/objects\"
@@ -162,7 +149,24 @@ apptainer exec \
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-cts_eval
 
         echo \"Running hotspot analysis for solution index: \${IDX}\"
+        set +e
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
+        rc=\$?
+        set -e
+
+        if [ \$rc -ne 0 ]; then
+          echo \"do-hotspot failed (rc=\$rc). Patching any generated run.sh and retrying once...\"
+
+          # Patch run.sh files created anywhere under WORK_DIR (most reliable)
+          find \"\${WORK_DIR}\" -name \"run.sh\" -type f -print0 | while IFS= read -r -d '' f; do
+              sed -i 's|../../scripts/split_grid_steady.py|python3 ../../scripts/split_grid_steady.py|g' \"\$f\"
+              sed -i 's|../../scripts/temp_tran.py|python3 ../../scripts/temp_tran.py|g' \"\$f\"
+              sed -i 's|../../scripts/grid_thermal_map.py|python3 ../../scripts/grid_thermal_map.py|g' \"\$f\"
+              sed -i 's|../../scripts/grid_thermal_map.pl|perl ../../scripts/grid_thermal_map.pl|g' \"\$f\"
+          done
+
+          make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
+        fi
 
         # Generate metrics for this specific solution
         echo \"Generating metrics for solution index: \${IDX}\"
