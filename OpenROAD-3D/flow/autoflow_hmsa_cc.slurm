@@ -23,108 +23,162 @@ module load apptainer
 # workspace is OpenROAD-3D/flow directory
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
-    --bind "${SCRATCH}:/scratch" \
     openroad.sif \
     bash -lc "
         set -euo pipefail
-        
+
         FLOW_DIR=/workspace
-        CASE_NAME=\"${CASE_NAME}\"
-        export DESIGN_NAME=\"${DESIGN_NAME}\"
-        export DESIGN_DIMENSION=\"${DESIGN_DIMENSION}\"
-        export DEF_VERSION=\"${DEF_VERSION}\"
-        IDX=\"${IDX}\"
-        
+        CASE_NAME='${CASE_NAME}'
+        export DESIGN_NAME='${DESIGN_NAME}'
+        export DESIGN_DIMENSION='${DESIGN_DIMENSION}'
+        export DEF_VERSION='${DEF_VERSION}'
+        IDX='${IDX}'
+
         HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
         DEF_FILE=\${SOLUTION_DIR}/\${CASE_NAME}_3D.gp.def
-        
+
+        # Make sure required inputs exist early
+        if [ ! -f \"\${DEF_FILE}\" ]; then
+          echo \"ERROR: DEF file not found: \${DEF_FILE}\"
+          ls -la \"\${SOLUTION_DIR}\" || true
+          exit 2
+        fi
+
+        # OSS CAD Suite env (provides python/openroad tools in your image)
         source /oss-cad-suite/environment
+
         # Set up isolated working directory in scratch to avoid conflicts
         WORK_DIR=/scratch/\${USER}/hmsa_or_results/\${CASE_NAME}_3D_\${IDX}
         rm -rf \"\${WORK_DIR}\"
         mkdir -p \"\${WORK_DIR}\"
-        
-        # Change to work directory
         cd \"\${WORK_DIR}\"
-        
-        # Symlink read-only directories (safe for parallel execution, saves copy time)
+
+        # -----------------------------
+        # Bring in read-only flow assets
+        # -----------------------------
         echo \"Creating symlinks for read-only directories...\"
-        ln -sf \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\" 
-        ln -sf \"\${FLOW_DIR}/platforms\" \"\${WORK_DIR}/platforms\"
-        ln -sf \"\${FLOW_DIR}/scripts\" \"\${WORK_DIR}/scripts\"
-        ln -sf \"\${FLOW_DIR}/scripts_3D\" \"\${WORK_DIR}/scripts_3D\"
-        ln -sf \"\${FLOW_DIR}/util\" \"\${WORK_DIR}/util\"
-        ln -sf \"\${FLOW_DIR}/tutorials\" \"\${WORK_DIR}/tutorials\"
-        
-        # Create designs directory structure and symlink read-only parts
+        ln -sfn \"\${FLOW_DIR}/HotSpot\"    \"\${WORK_DIR}/HotSpot\"
+        ln -sfn \"\${FLOW_DIR}/platforms\"  \"\${WORK_DIR}/platforms\"
+        ln -sfn \"\${FLOW_DIR}/scripts\"    \"\${WORK_DIR}/scripts\"
+        ln -sfn \"\${FLOW_DIR}/scripts_3D\"  \"\${WORK_DIR}/scripts_3D\"
+        ln -sfn \"\${FLOW_DIR}/util\"       \"\${WORK_DIR}/util\"
+        ln -sfn \"\${FLOW_DIR}/tutorials\"  \"\${WORK_DIR}/tutorials\"
+
+        # -----------------------------
+        # Designs tree: symlink + copy only mutable design dir
+        # -----------------------------
         mkdir -p \"\${WORK_DIR}/designs\"
-        ln -sf \"\${FLOW_DIR}/designs/nangate45\" \"\${WORK_DIR}/designs/nangate45\"
-        # Create nangate45_3D directory and symlink all designs except the one we need to modify
+        ln -sfn \"\${FLOW_DIR}/designs/nangate45\" \"\${WORK_DIR}/designs/nangate45\"
+
         mkdir -p \"\${WORK_DIR}/designs/nangate45_3D\"
-        # Copy only the specific design directory we need to modify
-        cp -r \"\${FLOW_DIR}/designs/nangate45_3D/\${DESIGN_NAME}\" \"\${WORK_DIR}/designs/nangate45_3D/\${DESIGN_NAME}\"
-        
-        # Copy essential files that might be modified
+        cp -r \"\${FLOW_DIR}/designs/nangate45_3D/\${DESIGN_NAME}\" \
+              \"\${WORK_DIR}/designs/nangate45_3D/\${DESIGN_NAME}\"
+
+        # Copy Makefiles locally so we can patch them safely
         echo \"Copying essential files...\"
         cp \"\${FLOW_DIR}/Makefile\" \"\${WORK_DIR}/\"
         cp \"\${FLOW_DIR}/Makefile.py\" \"\${WORK_DIR}/\"
-        
+
+        # -----------------------------
+        # FIX 1: genElapsedTime.py permission denied
+        # Patch Makefile to call it via python3 instead of executing it
+        # -----------------------------
+        if grep -q \"genElapsedTime.py\" \"\${WORK_DIR}/Makefile\"; then
+          sed -i 's|\\\$(UTILS_DIR)/genElapsedTime.py|python3 \\\$(UTILS_DIR)/genElapsedTime.py|g' \"\${WORK_DIR}/Makefile\"
+        fi
+
         # Create output directories (fresh for each task)
         mkdir -p \"\${WORK_DIR}/logs\" \"\${WORK_DIR}/results\" \"\${WORK_DIR}/reports\" \"\${WORK_DIR}/objects\"
-        
-        # Copy DEF file from solution directory
+
+        # Copy DEF file from solution directory into the design directory
         echo \"Copying DEF file for solution index: \${IDX}\"
         cp \"\${DEF_FILE}\" \"\${WORK_DIR}/designs/nangate45_3D/\${DESIGN_NAME}/\"
-        
-        # Set up environment variables (same as autoflow.sh)
+
+        # Set up environment variables
         export OPENROAD_EXE=\$(command -v openroad || echo openroad)
         export YOSYS_EXE=\$(command -v yosys || echo yosys)
         export WORK_HOME=\${WORK_DIR}
-        # Note: FLOW_HOME and HOTSPOT_SCRIPTS_DIR are set by Makefile defaults
-        # Since we cd to WORK_DIR, Makefile will use $(shell pwd) = WORK_DIR
-        
-        # Clean previous build artifacts to ensure fresh build for this solution
+
+        # -----------------------------
+        # FIX 2: HotSpot scripts path robustness
+        # Some flows expect HOTSPOT_SCRIPTS_DIR; ensure it points to the real scripts dir.
+        # -----------------------------
+        HOTSPOT_DIR=\"\${WORK_DIR}/HotSpot\"
+        if [ ! -d \"\${HOTSPOT_DIR}\" ]; then
+          echo \"ERROR: HotSpot directory missing at \${HOTSPOT_DIR}\"
+          ls -la \"\${WORK_DIR}\" || true
+          exit 3
+        fi
+
+        # Prefer HotSpot/scripts, but auto-detect if missing
+        if [ -f \"\${HOTSPOT_DIR}/scripts/divide_def.py\" ]; then
+          export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}/scripts\"
+        else
+          FOUND_DIV=\$(find \"\${HOTSPOT_DIR}\" -maxdepth 4 -name divide_def.py -print -quit || true)
+          if [ -n \"\${FOUND_DIV}\" ]; then
+            export HOTSPOT_SCRIPTS_DIR=\$(dirname \"\${FOUND_DIV}\")
+            echo \"Detected divide_def.py at: \${FOUND_DIV}\"
+            echo \"Using HOTSPOT_SCRIPTS_DIR=\${HOTSPOT_SCRIPTS_DIR}\"
+          else
+            echo \"ERROR: divide_def.py not found under \${HOTSPOT_DIR}\"
+            echo \"Listing HotSpot dir:\"
+            find \"\${HOTSPOT_DIR}\" -maxdepth 3 -type d -print || true
+            exit 4
+          fi
+        fi
+
+        # (Optional) ensure hotspot executable exists if your flow calls it directly
+        if [ -x \"\${HOTSPOT_DIR}/hotspot\" ]; then
+          export HOTSPOT_EXE=\"\${HOTSPOT_DIR}/hotspot\"
+        fi
+
+        # -----------------------------
+        # Clean previous build artifacts to ensure fresh run
+        # -----------------------------
         echo \"Cleaning previous build artifacts...\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk clean_all || true
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk clean_all || true
-        
-        DESIGN_NICKNAME=\$(grep '^export DESIGN_NICKNAME' designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk | sed 's/.*= *//' | tr -d ' ')
+
         RESULTS_DIR=\${WORK_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
-        mkdir -p \${RESULTS_DIR}
-        
-        # Copy 1_synth.sdc from flow folder to work folder (needed by do-pre_cts)
-        # The 3D flow uses pre-placed DEF files via init_odb.tcl, skipping synthesis
-        # So we copy the existing 1_synth.sdc from the original flow results
+        mkdir -p \"\${RESULTS_DIR}\"
+
+        # Copy 1_synth.sdc from flow folder to work folder
         FLOW_RESULTS_DIR=\${FLOW_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
+        if [ ! -f \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" ]; then
+          echo \"ERROR: Missing 1_synth.sdc at \${FLOW_RESULTS_DIR}/1_synth.sdc\"
+          ls -la \"\${FLOW_RESULTS_DIR}\" || true
+          exit 5
+        fi
         cp \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" \"\${RESULTS_DIR}/1_synth.sdc\"
         echo \"Copied 1_synth.sdc from \${FLOW_RESULTS_DIR} to \${RESULTS_DIR}\"
-        
+
+        # -----------------------------
         # Run make commands for this solution
+        # -----------------------------
         echo \"Running autoflow for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk do-autoflow
-        
+
         echo \"Running CTS evaluation for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-cts_eval
-        
+
         echo \"Running hotspot analysis for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
-        
+
         # Generate metrics for this specific solution
         echo \"Generating metrics for solution index: \${IDX}\"
         python3 scripts_3D/get_metrics.py
-        
+
         # Create directories for storing results in solution folder
         mkdir -p \"\${SOLUTION_DIR}/openroad_logs/\"
         mkdir -p \"\${SOLUTION_DIR}/openroad_results/\"
-        
+
         # Copy results to solution folder
         echo \"Copying results to solution directory: \${SOLUTION_DIR}\"
-        cp -r \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_logs/\" 
-        cp \"./final.csv\" \"\${SOLUTION_DIR}/\"
-        cp -r \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_results/\" 
-        
+        cp -r \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_logs/\" || true
+        cp \"./final.csv\" \"\${SOLUTION_DIR}/\" || true
+        cp -r \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_results/\" || true
+
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
     "
-
