@@ -780,6 +780,10 @@ do-hotspot:
 	@cd "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/" && \
 		chown -R $(USER):$(USER) ./ && \
 		chmod +x run.sh && \
+		sed -i 's|^../../scripts/split_grid_steady\.py|python3 ../../scripts/split_grid_steady.py|g' run.sh && \
+		sed -i 's|^../../scripts/temp_tran\.py|python3 ../../scripts/temp_tran.py|g' run.sh && \
+		sed -i 's|^../../scripts/grid_thermal_map\.py|python3 ../../scripts/grid_thermal_map.py|g' run.sh && \
+		sed -i 's|^../../scripts/grid_thermal_map\.pl|perl ../../scripts/grid_thermal_map.pl|g' run.sh && \
 		./run.sh
 	
 	@mkdir -p "$(RESULTS_DIR)/hotspot_outputs"
