@@ -14,6 +14,7 @@ mkdir -p logs
 CASE_NAME="bp_be"
 DESIGN_NAME="bp_be_top"
 IDX="${SLURM_ARRAY_TASK_ID}"
+HMSA_ROOT="${PWD}/../../HMSA_solution_eval"
 
 module load apptainer
 
