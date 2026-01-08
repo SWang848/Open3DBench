@@ -3,7 +3,6 @@
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
-#SBATCH --array=0-1%2
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
@@ -16,13 +15,16 @@ DESIGN_NAME="bp_be_top"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
-IDX="${SLURM_ARRAY_TASK_ID}"
+# IDX="${SLURM_ARRAY_TASK_ID}"
+IDX="0"
 
 module load apptainer
 
 # workspace is OpenROAD-3D/flow directory
+# apptainer exec \
+#     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
 apptainer exec \
-    --bind "${SLURM_SUBMIT_DIR}:/workspace" \
+    --bind "${PWD}:/workspace" \
     openroad.sif \
     bash -lc "
         set -euo pipefail
