@@ -116,24 +116,7 @@ apptainer exec \
 
         # Prefer HotSpot/scripts, but auto-detect if missing
         if [ -f \"\${HOTSPOT_DIR}/scripts/divide_def.py\" ]; then
-          export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}/scripts\"
-        else
-          FOUND_DIV=\$(find \"\${HOTSPOT_DIR}\" -maxdepth 4 -name divide_def.py -print -quit || true)
-          if [ -n \"\${FOUND_DIV}\" ]; then
-            export HOTSPOT_SCRIPTS_DIR=\$(dirname \"\${FOUND_DIV}\")
-            echo \"Detected divide_def.py at: \${FOUND_DIV}\"
-            echo \"Using HOTSPOT_SCRIPTS_DIR=\${HOTSPOT_SCRIPTS_DIR}\"
-          else
-            echo \"ERROR: divide_def.py not found under \${HOTSPOT_DIR}\"
-            echo \"Listing HotSpot dir:\"
-            find \"\${HOTSPOT_DIR}\" -maxdepth 3 -type d -print || true
-            exit 4
-          fi
-        fi
-
-        # (Optional) ensure hotspot executable exists if your flow calls it directly
-        if [ -x \"\${HOTSPOT_DIR}/hotspot\" ]; then
-          export HOTSPOT_EXE=\"\${HOTSPOT_DIR}/hotspot\"
+          export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}\"
         fi
 
         # -----------------------------
