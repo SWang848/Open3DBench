@@ -11,8 +11,8 @@ set -euo pipefail
 mkdir -p logs
 
 # Configuration - adjust these as needed
-CASE_NAME="bp_multi"
-DESIGN_NAME="bp_multi_top"
+CASE_NAME="bp_be"
+DESIGN_NAME="bp_be_top"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
