@@ -1,8 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=openroad_hmsa_eval
-#SBATCH --time=02:00:00
+#SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
+#SBATCH --array=0-1%2
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
@@ -15,16 +16,13 @@ DESIGN_NAME="bp_be_top"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
-# IDX="${SLURM_ARRAY_TASK_ID}"
-IDX="0"
+IDX="${SLURM_ARRAY_TASK_ID}"
 
 module load apptainer
 
 # workspace is OpenROAD-3D/flow directory
-# apptainer exec \
-#     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
 apptainer exec \
-    --bind "${PWD}:/workspace" \
+    --bind "${SLURM_SUBMIT_DIR}:/workspace" \
     --bind "${SCRATCH}:/scratch" \
     openroad.sif \
     bash -lc "
@@ -84,7 +82,7 @@ apptainer exec \
         cp \"\${FLOW_DIR}/Makefile.py\" \"\${WORK_DIR}/\"
 
         # -----------------------------
-        # FIX 1: genElapsedTime.py permission denied
+        # FIX: genElapsedTime.py permission denied
         # Patch Makefile to call it via python3 instead of executing it
         # -----------------------------
         if grep -q \"genElapsedTime.py\" \"\${WORK_DIR}/Makefile\"; then
@@ -108,11 +106,6 @@ apptainer exec \
         # Some flows expect HOTSPOT_SCRIPTS_DIR; ensure it points to the real scripts dir.
         # -----------------------------
         HOTSPOT_DIR=\"\${WORK_DIR}/HotSpot\"
-        if [ ! -d \"\${HOTSPOT_DIR}\" ]; then
-          echo \"ERROR: HotSpot directory missing at \${HOTSPOT_DIR}\"
-          ls -la \"\${WORK_DIR}\" || true
-          exit 3
-        fi
 
         # Prefer HotSpot/scripts, but auto-detect if missing
         if [ -f \"\${HOTSPOT_DIR}/scripts/divide_def.py\" ]; then
@@ -131,11 +124,6 @@ apptainer exec \
 
         # Copy 1_synth.sdc from flow folder to work folder
         FLOW_RESULTS_DIR=\${FLOW_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
-        if [ ! -f \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" ]; then
-          echo \"ERROR: Missing 1_synth.sdc at \${FLOW_RESULTS_DIR}/1_synth.sdc\"
-          ls -la \"\${FLOW_RESULTS_DIR}\" || true
-          exit 5
-        fi
         cp \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" \"\${RESULTS_DIR}/1_synth.sdc\"
         echo \"Copied 1_synth.sdc from \${FLOW_RESULTS_DIR} to \${RESULTS_DIR}\"
 
@@ -151,25 +139,6 @@ apptainer exec \
         echo \"Running hotspot analysis for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
 
-        # Generate metrics for this specific solution
-        echo \"Generating metrics for solution index: \${IDX}\"
-        # get_metrics.py expects logs/nangate45 and logs/nangate45_3D to exist
-        # Create logs/nangate45 if it doesn't exist (for 2D methods, even if empty)
-        mkdir -p \"logs/nangate45\" || true
-        # Ensure logs/nangate45_3D exists with the design directory
-        if [ ! -d \"logs/nangate45_3D\" ]; then
-          echo \"ERROR: logs/nangate45_3D directory not found\"
-          ls -la logs/ || true
-          exit 6
-        fi
-        # Check if the design directory exists
-        if [ ! -d \"logs/nangate45_3D/\${CASE_NAME}\" ]; then
-          echo \"ERROR: logs/nangate45_3D/\${CASE_NAME} directory not found\"
-          ls -la logs/nangate45_3D/ || true
-          exit 7
-        fi
-        python3 scripts_3D/get_metrics.py
-
         # Create directories for storing results in solution folder
         mkdir -p \"\${SOLUTION_DIR}/openroad_logs/\"
         mkdir -p \"\${SOLUTION_DIR}/openroad_results/\"
@@ -177,7 +146,6 @@ apptainer exec \
         # Copy results to solution folder
         echo \"Copying results to solution directory: \${SOLUTION_DIR}\"
         cp -r \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_logs/\" || true
-        cp \"./final.csv\" \"\${SOLUTION_DIR}/\" || true
         cp -r \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_results/\" || true
 
         echo \"Completed processing solution index: \${IDX}\"
