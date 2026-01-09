@@ -534,11 +534,11 @@ if __name__ == "__main__":
         dataframes.append(df)
     
     final_df = pd.concat(dataframes, ignore_index=True)
-    baseline_performance = [0.132, 3815933.0, -6.972, -9955.35, 1.048]
     metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
     # metrics_to_normalize = ["DRT_WL"]
     
     # Create baseline row with baseline performance values
+    # baseline_performance = [0.132, 3815933.0, -6.972, -9955.35, 1.048]
     # baseline_row = {col: None for col in final_df.columns}
     # baseline_row['Idx'] = 'baseline'
     # for i, metric in enumerate(metrics_to_normalize):
@@ -551,9 +551,9 @@ if __name__ == "__main__":
     
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
-    final_df.to_csv(f'final.csv', index=False)
+    final_df.to_csv(f'{dataset_name}_final.csv', index=False)
 
-    plot_path = os.path.join(dir_path, "cutsize_imbalance.png")
+    plot_path = os.path.join(dir_path, f"cutsize_imbalance.png")
     plot_pareto_front(
         final_df,
         x_col="Cut_size",
