@@ -146,6 +146,8 @@ export SCRIPTS_DIR   ?= $(FLOW_HOME)/scripts
 export TEST_DIR      ?= $(FLOW_HOME)/test
 # 
 export HOTSPOT_SCRIPTS_DIR ?= $(FLOW_HOME)/HotSpot
+# HOTSPOT_EXAMPLES_DIR can be overridden to use a per-job directory (for parallel execution)
+export HOTSPOT_EXAMPLES_DIR ?= $(HOTSPOT_SCRIPTS_DIR)/examples
 
 export MAX_T_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/max_t.py
 export DIVIDE_GRID_PY      := $(HOTSPOT_SCRIPTS_DIR)/scripts/divide_grid.py
@@ -765,19 +767,19 @@ do-hotspot:
 	rm -f "$(HOTSPOT_OUTPUT)/upper.ptrace" "$(HOTSPOT_OUTPUT)/bottom.ptrace"
 	
 	@echo "[6/8] Creating version directory..."
-	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
-	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/"
-	@chown -R $(USER):$(USER) "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
+	@mkdir -p "$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
+	@mkdir -p "$(HOTSPOT_EXAMPLES_DIR)/thermal/"
+	@chown -R $(USER):$(USER) "$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)"
 	
 	@rsync -a --no-g --exclude='*/' \
 		"$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/" \
-		"$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/"
+		"$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)/"
 	
 	@cp -f "$(HOTSPOT_SCRIPTS_DIR)/scripts/output/"* \
-		"$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/" 2>/dev/null || true
+		"$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)/" 2>/dev/null || true
 	
 	@echo "Running HotSpot analysis..."
-	@cd "$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/" && \
+	@cd "$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)/" && \
 		chown -R $(USER):$(USER) ./ && \
 		chmod +x run.sh && \
 		sed -i 's|^../../scripts/split_grid_steady\.py|python3 ../../scripts/split_grid_steady.py|g' run.sh && \
@@ -788,14 +790,14 @@ do-hotspot:
 	
 	@mkdir -p "$(RESULTS_DIR)/hotspot_outputs"
 	@rsync -a --no-g --delete \
-		"$(HOTSPOT_SCRIPTS_DIR)/examples/$(DESIGN_DIMENSION)_$(DEF_VERSION)/outputs/" \
+		"$(HOTSPOT_EXAMPLES_DIR)/$(DESIGN_DIMENSION)_$(DEF_VERSION)/outputs/" \
 		"$(RESULTS_DIR)/hotspot_outputs/" 2>/dev/null || true
 	@chown -R $(USER):$(USER) "$(RESULTS_DIR)/hotspot_outputs"
 
 
-	@rm -r "$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/outputs" || true
-	@mkdir -p "$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/outputs"
-	@chown -R $(USER):$(USER) "$(HOTSPOT_SCRIPTS_DIR)/examples/thermal/outputs"
+	@rm -r "$(HOTSPOT_EXAMPLES_DIR)/thermal/outputs" || true
+	@mkdir -p "$(HOTSPOT_EXAMPLES_DIR)/thermal/outputs"
+	@chown -R $(USER):$(USER) "$(HOTSPOT_EXAMPLES_DIR)/thermal/outputs"
 
 	@echo "[8/8] Analysis completed. Results: $(RESULTS_DIR)/hotspot_outputs"
 

@@ -3,7 +3,7 @@
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
-#SBATCH --array=0-100%64
+#SBATCH --array=0-1%2
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
@@ -59,12 +59,17 @@ apptainer exec \
         # Bring in read-only flow assets
         # -----------------------------
         echo \"Creating symlinks for read-only directories...\"
-        ln -sfn \"\${FLOW_DIR}/HotSpot\"    \"\${WORK_DIR}/HotSpot\"
         ln -sfn \"\${FLOW_DIR}/platforms\"  \"\${WORK_DIR}/platforms\"
         ln -sfn \"\${FLOW_DIR}/scripts\"    \"\${WORK_DIR}/scripts\"
         ln -sfn \"\${FLOW_DIR}/scripts_3D\"  \"\${WORK_DIR}/scripts_3D\"
         ln -sfn \"\${FLOW_DIR}/util\"       \"\${WORK_DIR}/util\"
         ln -sfn \"\${FLOW_DIR}/tutorials\"  \"\${WORK_DIR}/tutorials\"
+        
+        #  Copy HotSpot instead of symlinking to avoid write conflicts
+        # HotSpot writes to scripts/output/ and examples/*/outputs/ during execution
+        # Each parallel job needs its own isolated copy (no rebuild needed - binaries are pre-built)
+        echo \"Copying HotSpot directory (pre-built, no rebuild needed)...\"
+        cp -r \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\"
 
         # -----------------------------
         # Designs tree: symlink + copy only mutable design dir
@@ -102,22 +107,17 @@ apptainer exec \
         export WORK_HOME=\${WORK_DIR}
 
         # -----------------------------
-        # FIX 2: HotSpot scripts path robustness
-        # Some flows expect HOTSPOT_SCRIPTS_DIR; ensure it points to the real scripts dir.
+        # Set up HotSpot paths (now using copied directory, fully isolated per job)
         # -----------------------------
         HOTSPOT_DIR=\"\${WORK_DIR}/HotSpot\"
-
-        # Prefer HotSpot/scripts, but auto-detect if missing
-        if [ -f \"\${HOTSPOT_DIR}/scripts/divide_def.py\" ]; then
-          export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}\"
-        fi
+        export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}\"
         
-        # Create a unique output directory per job to avoid conflicts
-        # Since HotSpot is symlinked, all jobs would write to the same output directory
-        # Create a per-job output directory in WORK_DIR instead
-        HOTSPOT_OUTPUT_DIR=\"\${WORK_DIR}/hotspot_output\"
-        mkdir -p \"\${HOTSPOT_OUTPUT_DIR}\"
-        export HOTSPOT_OUTPUT=\"\${HOTSPOT_OUTPUT_DIR}\"
+        # HotSpot output directory (scripts/output/) - now isolated per job
+        mkdir -p \"\${HOTSPOT_DIR}/scripts/output\"
+        export HOTSPOT_OUTPUT=\"\${HOTSPOT_DIR}/scripts/output\"
+        
+        # Examples directory - now isolated per job (no need for HOTSPOT_EXAMPLES_DIR override)
+        # The Makefile will use HOTSPOT_SCRIPTS_DIR/examples/ which is now per-job
 
         # -----------------------------
         # Clean previous build artifacts to ensure fresh run
@@ -144,9 +144,9 @@ apptainer exec \
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-cts_eval
 
         echo \"Running hotspot analysis for solution index: \${IDX}\"
-        # Pass HOTSPOT_OUTPUT as make variable to override Makefile default
-        # This ensures each parallel job writes to its own isolated output directory
-        make HOTSPOT_OUTPUT=\"\${HOTSPOT_OUTPUT_DIR}\" DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
+        # HotSpot is now fully isolated per job (copied, not symlinked)
+        # No need to override HOTSPOT_OUTPUT or HOTSPOT_EXAMPLES_DIR - defaults work correctly
+        make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
 
         # Create directories for storing results in solution folder
         mkdir -p \"\${SOLUTION_DIR}/openroad_logs/\"
