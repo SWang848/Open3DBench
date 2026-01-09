@@ -34,6 +34,8 @@ apptainer exec \
         export DESIGN_DIMENSION='${DESIGN_DIMENSION}'
         export DEF_VERSION='${DEF_VERSION}'
         IDX='${IDX}'
+        SLURM_JOB_ID='${SLURM_JOB_ID}'
+        SLURM_ARRAY_TASK_ID='${SLURM_ARRAY_TASK_ID}'
 
         HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
@@ -153,10 +155,11 @@ apptainer exec \
         rm -rf \"\${WORK_DIR}/HotSpot\"
 
         # -----------------------------
-        # move running outpus and error files to solution directory
+        # Copy SLURM output/error logs to solution directory
         # -----------------------------
-        cp "\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out" "\${WORK_DIR}/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out" || true
-        cp "\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err" "\${WORK_DIR}/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err" || true
+        cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${SOLUTION_DIR}/\" || true
+        cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${SOLUTION_DIR}/\" || true
+        
 
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
