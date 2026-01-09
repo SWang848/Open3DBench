@@ -111,6 +111,13 @@ apptainer exec \
         if [ -f \"\${HOTSPOT_DIR}/scripts/divide_def.py\" ]; then
           export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}\"
         fi
+        
+        # Create a unique output directory per job to avoid conflicts
+        # Since HotSpot is symlinked, all jobs would write to the same output directory
+        # Create a per-job output directory in WORK_DIR instead
+        HOTSPOT_OUTPUT_DIR=\"\${WORK_DIR}/hotspot_output\"
+        mkdir -p \"\${HOTSPOT_OUTPUT_DIR}\"
+        export HOTSPOT_OUTPUT=\"\${HOTSPOT_OUTPUT_DIR}\"
 
         # -----------------------------
         # Clean previous build artifacts to ensure fresh run
@@ -137,7 +144,9 @@ apptainer exec \
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-cts_eval
 
         echo \"Running hotspot analysis for solution index: \${IDX}\"
-        make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
+        # Pass HOTSPOT_OUTPUT as make variable to override Makefile default
+        # This ensures each parallel job writes to its own isolated output directory
+        make HOTSPOT_OUTPUT=\"\${HOTSPOT_OUTPUT_DIR}\" DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
 
         # Create directories for storing results in solution folder
         mkdir -p \"\${SOLUTION_DIR}/openroad_logs/\"
