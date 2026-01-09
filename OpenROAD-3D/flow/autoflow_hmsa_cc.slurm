@@ -68,6 +68,9 @@ apptainer exec \
         #  Copy HotSpot instead of symlinking to avoid write conflicts
         # HotSpot writes to scripts/output/ and examples/*/outputs/ during execution
         # Each parallel job needs its own isolated copy (no rebuild needed - binaries are pre-built)
+        # HotSpot is copied to ${WORK_DIR}/HotSpot
+        # Makefile will automatically set HOTSPOT_SCRIPTS_DIR=$(FLOW_HOME)/HotSpot
+        # Since we cd to WORK_DIR and FLOW_HOME defaults to $(shell pwd), it will resolve correctly
         echo \"Copying HotSpot directory (pre-built, no rebuild needed)...\"
         cp -r \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\"
 
@@ -107,19 +110,6 @@ apptainer exec \
         export WORK_HOME=\${WORK_DIR}
 
         # -----------------------------
-        # Set up HotSpot paths (now using copied directory, fully isolated per job)
-        # -----------------------------
-        HOTSPOT_DIR=\"\${WORK_DIR}/HotSpot\"
-        export HOTSPOT_SCRIPTS_DIR=\"\${HOTSPOT_DIR}\"
-        
-        # HotSpot output directory (scripts/output/) - now isolated per job
-        mkdir -p \"\${HOTSPOT_DIR}/scripts/output\"
-        export HOTSPOT_OUTPUT=\"\${HOTSPOT_DIR}/scripts/output\"
-        
-        # Examples directory - now isolated per job (no need for HOTSPOT_EXAMPLES_DIR override)
-        # The Makefile will use HOTSPOT_SCRIPTS_DIR/examples/ which is now per-job
-
-        # -----------------------------
         # Clean previous build artifacts to ensure fresh run
         # -----------------------------
         echo \"Cleaning previous build artifacts...\"
@@ -156,6 +146,17 @@ apptainer exec \
         echo \"Copying results to solution directory: \${SOLUTION_DIR}\"
         cp -r \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_logs/\" || true
         cp -r \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_results/\" || true
+
+        # -----------------------------
+        # remove HotSpot directory to save space
+        # -----------------------------
+        rm -rf \"\${WORK_DIR}/HotSpot\"
+
+        # -----------------------------
+        # move running outpus and error files to solution directory
+        # -----------------------------
+        cp "\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out" "\${WORK_DIR}/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out" || true
+        cp "\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err" "\${WORK_DIR}/openroad_hmsa_eval-\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err" || true
 
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
