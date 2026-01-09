@@ -70,9 +70,9 @@ apptainer exec \
         #  Copy HotSpot instead of symlinking to avoid write conflicts
         # HotSpot writes to scripts/output/ and examples/*/outputs/ during execution
         # Each parallel job needs its own isolated copy (no rebuild needed - binaries are pre-built)
-        # HotSpot is copied to ${WORK_DIR}/HotSpot
-        # Makefile will automatically set HOTSPOT_SCRIPTS_DIR=$(FLOW_HOME)/HotSpot
-        # Since we cd to WORK_DIR and FLOW_HOME defaults to $(shell pwd), it will resolve correctly
+        # HotSpot is copied to WORK_DIR/HotSpot
+        # Makefile will automatically set HOTSPOT_SCRIPTS_DIR from FLOW_HOME/HotSpot
+        # Since we cd to WORK_DIR and FLOW_HOME defaults to current directory, it will resolve correctly
         echo \"Copying HotSpot directory (pre-built, no rebuild needed)...\"
         cp -r \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\"
 
