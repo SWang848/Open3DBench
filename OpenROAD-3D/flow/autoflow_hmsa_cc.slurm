@@ -77,7 +77,22 @@ apptainer exec \
         # Makefile will automatically set HOTSPOT_SCRIPTS_DIR from FLOW_HOME/HotSpot
         # Since we cd to WORK_DIR and FLOW_HOME defaults to current directory, it will resolve correctly
         echo \"Copying HotSpot directory (pre-built, no rebuild needed)...\"
-        cp -r \"\${FLOW_DIR}/HotSpot\" \"\${WORK_DIR}/HotSpot\"
+        # Use rsync for more robust copying (handles I/O errors better than cp)
+        # Retry up to 3 times if copy fails
+        MAX_RETRIES=3
+        RETRY_COUNT=0
+        while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+          if rsync -a --no-g \"\${FLOW_DIR}/HotSpot/\" \"\${WORK_DIR}/HotSpot/\" 2>/dev/null; then
+            break
+          fi
+          RETRY_COUNT=\$((RETRY_COUNT + 1))
+          echo \"HotSpot copy attempt \$RETRY_COUNT failed, retrying...\"
+          sleep 2
+        done
+        if [ \$RETRY_COUNT -eq \$MAX_RETRIES ]; then
+          echo \"ERROR: Failed to copy HotSpot after \$MAX_RETRIES attempts\"
+          exit 3
+        fi
 
         # -----------------------------
         # Designs tree: symlink + copy only mutable design dir
