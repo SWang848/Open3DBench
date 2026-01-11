@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -euo pipefail
 export DESIGN_DIMENSION=$1
 export DEF_VERSION=$2
 export DESIGN_NAME=$3

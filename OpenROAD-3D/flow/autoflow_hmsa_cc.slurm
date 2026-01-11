@@ -43,15 +43,32 @@ apptainer exec \
         HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
         DEF_FILE=\${SOLUTION_DIR}/\${CASE_NAME}_3D.gp.def
+        
+        # Function to copy logs on exit (success or failure)
+        # Defined early so trap can catch errors from subsequent operations
+        copy_logs_on_exit() {
+            local exit_code=\$?
+            echo \"Script exiting with code: \${exit_code}\"
+            
+            # Only copy logs if WORK_DIR exists (might not if error occurs early)
+            if [ -n \"\${WORK_DIR:-}\" ] && [ -d \"\${WORK_DIR}\" ]; then
+                # Copy SLURM logs to WORK_DIR
+                if ls \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" 1> /dev/null 2>&1; then
+                    cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${WORK_DIR}/\" || true
+                fi
+                if ls \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" 1> /dev/null 2>&1; then
+                    cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${WORK_DIR}/\" || true
+                fi
+            fi
+            
+            exit \${exit_code}
+        }
+        
+        # Set trap to copy logs on exit (EXIT fires on both success and failure)
+        # Must be set AFTER function definition but BEFORE any operations that might fail
+        trap copy_logs_on_exit EXIT
 
-        # Make sure required inputs exist early
-        if [ ! -f \"\${DEF_FILE}\" ]; then
-          echo \"ERROR: DEF file not found: \${DEF_FILE}\"
-          ls -la \"\${SOLUTION_DIR}\" || true
-          exit 2
-        fi
-
-        # OSS CAD Suite env (provides python/openroad tools in your image)
+        # Set up OSS CAD Suite environment (provides python/openroad tools)
         source /oss-cad-suite/environment
 
         # Set up isolated working directory in scratch to avoid conflicts
@@ -171,13 +188,6 @@ apptainer exec \
         # remove HotSpot directory to save space
         # -----------------------------
         rm -rf \"\${WORK_DIR}/HotSpot\"
-
-        # -----------------------------
-        # Copy SLURM output/error logs to solution directory
-        # -----------------------------
-        cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${WORK_DIR}/\" || true
-        cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${WORK_DIR}/\" || true
-        
 
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
