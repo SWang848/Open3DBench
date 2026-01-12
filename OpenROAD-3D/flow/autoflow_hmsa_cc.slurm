@@ -12,7 +12,7 @@ mkdir -p logs
 
 # Configuration - adjust these as needed
 CASE_NAME="bp_quad"
-DESIGN_NAME="bp_quad_top"
+DESIGN_NAME="bp_quad"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
