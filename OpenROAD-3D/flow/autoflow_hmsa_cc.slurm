@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=openroad_hmsa_eval
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --array=50
+#SBATCH --array=0-57
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
