@@ -24,6 +24,7 @@ module load apptainer
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
     --bind "${SCRATCH}:/scratch" \
+    --bind "${SLURM_TMPDIR}:/tmp_slurm" \
     openroad.sif \
     bash -lc "
         set -euo pipefail
@@ -50,16 +51,8 @@ apptainer exec \
             local exit_code=\$?
             echo \"Script exiting with code: \${exit_code}\"
             
-            # Only copy logs if WORK_DIR exists (might not if error occurs early)
-            if [ -n \"\${WORK_DIR:-}\" ] && [ -d \"\${WORK_DIR}\" ]; then
-                # Copy SLURM logs to WORK_DIR
-                if ls \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" 1> /dev/null 2>&1; then
-                    cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${WORK_DIR}/\" || true
-                fi
-                if ls \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" 1> /dev/null 2>&1; then
-                    cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${WORK_DIR}/\" || true
-                fi
-            fi
+            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${SOLUTION_DIR}/\"
+            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${SOLUTION_DIR}/\"
             
             exit \${exit_code}
         }
@@ -71,9 +64,8 @@ apptainer exec \
         # Set up OSS CAD Suite environment (provides python/openroad tools)
         source /oss-cad-suite/environment
 
-        # Set up isolated working directory in scratch to avoid conflicts
-        WORK_DIR=/scratch/\${USER}/hmsa_or_results/\${CASE_NAME}_3D_\${IDX}
-        rm -rf \"\${WORK_DIR}\"
+        # Set up isolated working directory in tmp_slurm for faster I/O
+        WORK_DIR=/tmp_slurm/hmsa_or_results/\${CASE_NAME}_3D_\${IDX}
         mkdir -p \"\${WORK_DIR}\"
         cd \"\${WORK_DIR}\"
 
@@ -87,12 +79,10 @@ apptainer exec \
         ln -sfn \"\${FLOW_DIR}/util\"       \"\${WORK_DIR}/util\"
         ln -sfn \"\${FLOW_DIR}/tutorials\"  \"\${WORK_DIR}/tutorials\"
         
-        #  Copy HotSpot instead of symlinking to avoid write conflicts
+        # Copy HotSpot instead of symlinking to avoid write conflicts
         # HotSpot writes to scripts/output/ and examples/*/outputs/ during execution
         # Each parallel job needs its own isolated copy (no rebuild needed - binaries are pre-built)
         # HotSpot is copied to WORK_DIR/HotSpot
-        # Makefile will automatically set HOTSPOT_SCRIPTS_DIR from FLOW_HOME/HotSpot
-        # Since we cd to WORK_DIR and FLOW_HOME defaults to current directory, it will resolve correctly
         echo \"Copying HotSpot directory (pre-built, no rebuild needed)...\"
         # Use rsync for more robust copying (handles I/O errors better than cp)
         # Retry up to 3 times if copy fails
@@ -112,7 +102,7 @@ apptainer exec \
         fi
 
         # -----------------------------
-        # Designs tree: symlink + copy only mutable design dir
+        # Symlink + copy only mutable design dir
         # -----------------------------
         mkdir -p \"\${WORK_DIR}/designs\"
         ln -sfn \"\${FLOW_DIR}/designs/nangate45\" \"\${WORK_DIR}/designs/nangate45\"
@@ -134,7 +124,7 @@ apptainer exec \
           sed -i 's|\\\$(UTILS_DIR)/genElapsedTime.py|python3 \\\$(UTILS_DIR)/genElapsedTime.py|g' \"\${WORK_DIR}/Makefile\"
         fi
 
-        # Create output directories (fresh for each task)
+        # Create output directories
         mkdir -p \"\${WORK_DIR}/logs\" \"\${WORK_DIR}/results\" \"\${WORK_DIR}/reports\" \"\${WORK_DIR}/objects\"
 
         # Copy DEF file from solution directory into the design directory
@@ -153,10 +143,9 @@ apptainer exec \
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk clean_all || true
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk clean_all || true
 
+        # Makefile not include synthesis, so copy 1_synth.sdc from flow folder to work folder
         RESULTS_DIR=\${WORK_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
         mkdir -p \"\${RESULTS_DIR}\"
-
-        # Copy 1_synth.sdc from flow folder to work folder
         FLOW_RESULTS_DIR=\${FLOW_DIR}/results/nangate45_3D/\${CASE_NAME}/3D
         cp \"\${FLOW_RESULTS_DIR}/1_synth.sdc\" \"\${RESULTS_DIR}/1_synth.sdc\"
         echo \"Copied 1_synth.sdc from \${FLOW_RESULTS_DIR} to \${RESULTS_DIR}\"
@@ -175,19 +164,12 @@ apptainer exec \
         # No need to override HOTSPOT_OUTPUT or HOTSPOT_EXAMPLES_DIR - defaults work correctly
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
 
-        # Create directories for storing results in solution folder
-        mkdir -p \"\${SOLUTION_DIR}/openroad_logs/\"
-        mkdir -p \"\${SOLUTION_DIR}/openroad_results/\"
-
-        # Copy results to solution folder
-        echo \"Copying results to solution directory: \${SOLUTION_DIR}\"
-        cp -r \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_logs/\" || true
-        cp -r \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* \"\${SOLUTION_DIR}/openroad_results/\" || true
-
-        # -----------------------------
-        # remove HotSpot directory to save space
-        # -----------------------------
-        rm -rf \"\${WORK_DIR}/HotSpot\"
+        # Zip and move results (trap will also handle this on failure)
+        echo \"Zipping results...\"
+        zip -r -0 \"./openroad_logs.zip\" \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* || true
+        zip -r -0 \"./openroad_results.zip\" \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* || true
+        mv \"./openroad_logs.zip\" \"\${SOLUTION_DIR}/\"
+        mv \"./openroad_results.zip\" \"\${SOLUTION_DIR}/\"
 
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
