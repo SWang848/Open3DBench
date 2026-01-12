@@ -3,7 +3,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --array=0-108
+#SBATCH --array=0-100
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
@@ -11,8 +11,8 @@ set -euo pipefail
 mkdir -p logs
 
 # Configuration - adjust these as needed
-CASE_NAME="bp"
-DESIGN_NAME="black_parrot"
+CASE_NAME="bp_multi"
+DESIGN_NAME="bp_multi_top"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
@@ -166,8 +166,8 @@ apptainer exec \
 
         # Zip and move results (trap will also handle this on failure)
         echo \"Zipping results...\"
-        zip -r -0 \"./openroad_logs.zip\" \"./logs/nangate45_3D/\${CASE_NAME}/3D\"/* || true
-        zip -r -0 \"./openroad_results.zip\" \"./results/nangate45_3D/\${CASE_NAME}/3D\"/* || true
+        (cd \"./logs/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_logs.zip\" *) || true
+        (cd \"./results/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_results.zip\" *) || true
         mv \"./openroad_logs.zip\" \"\${SOLUTION_DIR}/\"
         mv \"./openroad_results.zip\" \"\${SOLUTION_DIR}/\"
 
