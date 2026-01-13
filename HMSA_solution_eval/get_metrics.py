@@ -51,12 +51,12 @@ def plot_pareto_front(
     data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
     data[fitness_col] = pd.to_numeric(data[fitness_col], errors="coerce")
 
-    plot_data = data.dropna(subset=["Idx", x_col, y_col, fitness_col])
+    plot_data = data.dropna(subset=["Idx", x_col, y_col])
     if plot_data.empty:
         logging.warning("No valid data points to plot in Pareto front.")
         return
 
-    plot_data = plot_data.sort_values(fitness_col, ascending=True).reset_index(drop=True)
+    plot_data = plot_data.sort_values(fitness_col, ascending=True, na_position='last').reset_index(drop=True)
     if max_points is not None and max_points > 0:
         plot_data = plot_data.head(max_points)
 
@@ -64,19 +64,25 @@ def plot_pareto_front(
     y_values = plot_data[y_col].to_numpy(dtype=float)
     fitness = plot_data[fitness_col].to_numpy(dtype=float)
 
-    vmin = float(fitness.min())
-    vmax = float(fitness.max())
+    valid_mask = ~pd.isna(fitness)
+    x_valid = x_values[valid_mask]
+    y_valid = y_values[valid_mask]
+    fitness_valid = fitness[valid_mask]
+
+    plt.figure(figsize=(10, 6))
+    
+    vmin = float(fitness_valid.min())
+    vmax = float(fitness_valid.max())
     if np.isclose(vmin, vmax):
         vmax = vmin + 1e-9
 
     norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
     cmap = plt.get_cmap("coolwarm")
-
-    plt.figure(figsize=(10, 6))
+    
     scatter = plt.scatter(
-        x_values,
-        y_values,
-        c=fitness,
+        x_valid,
+        y_valid,
+        c=fitness_valid,
         cmap=cmap,
         norm=norm,
         s=110,
@@ -84,6 +90,19 @@ def plot_pareto_front(
         edgecolors="black",
         linewidths=0.8,
     )
+    
+    # Plot NaN fitness points in gray
+    if not valid_mask.all():
+        plt.scatter(
+            x_values[~valid_mask],
+            y_values[~valid_mask],
+            c="black",
+            s=110,
+            alpha=1.0,           # pure dark black
+            edgecolors="black",
+            linewidths=0.8,
+            marker="o",          # solid node
+        )
 
     sorted_points = sorted(zip(x_values, y_values))
     if sorted_points:
@@ -349,7 +368,35 @@ def get_overflow(log_content):
 
 def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJson, resizefile, upper_log, bottom_log, cost, key):
 
-
+    if finalJson is None:
+        upper_log = load_file(upper_log)
+        bottom_log = load_file(bottom_log)
+        metric = {}
+        metric["Key"] = key
+        metric["Cut_size"], metric["Area_imbalance"] = cost[0], cost[1]
+        metric["U_wHPWL"] = get_wHPWL(upper_log)
+        metric["B_wHPWL"] = get_wHPWL(bottom_log)
+        metric["U_overflow"] = get_overflow(upper_log)
+        metric["B_overflow"] = get_overflow(bottom_log)
+        metric["total_wHPWL"] = metric["U_wHPWL"] + metric["B_wHPWL"]
+        metric["total_overflow"] = metric["U_overflow"] + metric["B_overflow"]
+        
+        metric["PRE_RESIZE_WNS"], metric["PRE_RESIZE_TNS"], metric["POST_RESIZE_WNS"], metric["POST_RESIZE_TNS"] = None, None, None, None
+        metric["Congestion"] = None
+        metric["GRT_WL"] = None
+        metric["GRT_WNS"], metric["GRT_TNS"] = None, None
+        metric["DRT_WL"] = None
+        metric["Final_WNS"], metric["Final_TNS"] = None, None
+        metric["Power"] = None
+        metric["#overflow"] = None
+        metric["NVP"] = None
+        
+        metric["Die Area"] = None
+        metric["Cell Area"] = None
+        metric["#Macro"], metric["#Cells"], metric["Util"] = None, None, None
+        metric["#Net"] = None
+        
+        return metric
     final=load_Json(finalJson)
     route=load_Json(routeJson)
     place=load_file(placedpLog)
@@ -386,7 +433,6 @@ def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJ
     metric["#Macro"], metric["#Cells"], metric["Util"] = get_statistics(final)
     metric["#Net"] = get_net_num(route)
 
-
     return metric
 
 def get_substring_after_underscore(input_string):
@@ -408,15 +454,26 @@ def find_reports_in_dirs(base_dir):
     for solution_idx in os.listdir(base_dir):
         solution_root = os.path.join(base_dir, solution_idx)
         if os.path.isdir(solution_root):
-            report_files[f"{design_name}_{solution_idx}"] = {
-                "report": os.path.join(solution_root, 'openroad_logs', '6_report.json'),
-                "route": os.path.join(solution_root, 'openroad_logs', '5_2_route.json'),
-                "place": os.path.join(solution_root, 'openroad_logs', '3_5_place_dp.log'),
-                "gp_route": os.path.join(solution_root, 'openroad_logs', '5_1_grt.log'),
-                "fp": os.path.join(solution_root, 'openroad_logs', '2_1_floorplan.json'),
-                "groute": os.path.join(solution_root, 'openroad_logs', '5_1_grt.json'),
-                "resize": os.path.join(solution_root, 'openroad_logs', '3_4_place_resized.log')
-            }
+            if os.path.exists(os.path.join(solution_root, 'openroad_logs')):
+                report_files[f"{design_name}_{solution_idx}"] = {
+                    "report": os.path.join(solution_root, 'openroad_logs', '6_report.json'),
+                    "route": os.path.join(solution_root, 'openroad_logs', '5_2_route.json'),
+                    "place": os.path.join(solution_root, 'openroad_logs', '3_5_place_dp.log'),
+                    "gp_route": os.path.join(solution_root, 'openroad_logs', '5_1_grt.log'),
+                    "fp": os.path.join(solution_root, 'openroad_logs', '2_1_floorplan.json'),
+                    "groute": os.path.join(solution_root, 'openroad_logs', '5_1_grt.json'),
+                    "resize": os.path.join(solution_root, 'openroad_logs', '3_4_place_resized.log')
+                }
+            else:
+                report_files[f"{design_name}_{solution_idx}"] = {
+                    'report': None,
+                    'route': None,
+                    'place': None,
+                    'gp_route': None,
+                    'fp': None,
+                    'groute': None,
+                    'resize': None
+                }
             placement_reports[f"{design_name}_{solution_idx}"] = {
                 "upper": os.path.join(solution_root, 'log_upper'),
                 "bottom": os.path.join(solution_root, 'log_bottom_all')
@@ -469,36 +526,33 @@ def cal_fitness_score(df, metrics):
     best_values = {}
 
     for metric in metrics:
-        if metric not in df.columns:
-            normalized_components[metric] = pd.Series(0.0, index=df.index, dtype=float)
-            best_values[metric] = None
-            continue
-
         numeric_col = pd.to_numeric(df[metric], errors='coerce')
-        if numeric_col.isna().all():
-            normalized_components[metric] = pd.Series(0.0, index=df.index, dtype=float)
-            best_values[metric] = None
-            continue
-
         col_min = numeric_col.min()
         col_max = numeric_col.max()
-
-        normalized_series = pd.Series(0.0, index=df.index, dtype=float)
 
         if col_max <= 0:
             denom = abs(col_min)
             if denom != 0:
                 normalized_series = numeric_col.abs() / denom
+            else:
+                # All non-NaN values are 0; set them to 0 but keep NaN as NaN
+                normalized_series = numeric_col.where(numeric_col.isna(), 0.0)
             best_value = col_max
         elif col_min >= 0:
             denom = col_max
             if denom != 0:
                 normalized_series = numeric_col / denom
+            else:
+                # All non-NaN values are 0; set them to 0 but keep NaN as NaN
+                normalized_series = numeric_col.where(numeric_col.isna(), 0.0)
             best_value = col_min
         else:
             denom = max(abs(col_min), abs(col_max))
             if denom != 0:
                 normalized_series = numeric_col.abs() / denom
+            else:
+                # All non-NaN values are 0; set them to 0 but keep NaN as NaN
+                normalized_series = numeric_col.where(numeric_col.isna(), 0.0)
             abs_series = numeric_col.abs()
             best_index = abs_series.idxmin()
             best_value = numeric_col.loc[best_index]
@@ -507,18 +561,18 @@ def cal_fitness_score(df, metrics):
         best_values[metric] = _to_python_scalar(best_value)
 
     normalized_matrix = pd.DataFrame(normalized_components, index=df.index)
-    fitness_components = normalized_matrix.fillna(0.0)
-
+    # If any metric is NaN for a row, fitness will be NaN (sum propagates NaN)
     result_df = df.copy()
-    result_df["Fitness"] = np.sqrt((fitness_components ** 2).sum(axis=1))
-    result_df = result_df.sort_values(by="Fitness", ascending=True).reset_index(drop=True)
+    # propagate NaN: if any metric is NaN for the row, fitness becomes NaN
+    result_df["Fitness"] = np.sqrt((normalized_matrix ** 2).sum(axis=1, skipna=False))
+    result_df = result_df.sort_values(by="Fitness", ascending=True, na_position='last').reset_index(drop=True)
 
     return result_df, best_values
 
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "bp_multi"
+    dataset_name = "bp_fe"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
