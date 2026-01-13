@@ -2,7 +2,7 @@
 #SBATCH --job-name=openroad_hmsa_eval
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --array=2,3,12,13,14,15,17,26,39,41,42,43,45,58,66,67,68,71,83,84,86,88,103
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
