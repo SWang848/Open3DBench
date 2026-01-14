@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_cpu
-#SBATCH --time=01:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --array=0-148
+#SBATCH --array=0-301
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
 set -euo pipefail
 mkdir -p logs
 
-DESIGN_NAME="ariane136_3D"
-CASE_NAME="ariane136"
+DESIGN_NAME="swerv_wrapper_3D"
+CASE_NAME="swerv_wrapper"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 module load apptainer
