@@ -250,17 +250,28 @@ def main() -> None:
     
     logging.info(f"Loading features from {args.features_file}...")
     X, candidate_keys, metadata = load_features_from_file(args.features_file, args.feature_type)
-    # breakpoint()
-    # X = np.delete(X, 5, axis=1)
-    # _,_,rsvec = np.linalg.svd(X)
-    # rsvec_new = rsvec[:6]
-    # X = X@rsvec_new.T
-    # breakpoint()
+
     logging.info(f"Loading fitness scores from {args.fitness_csv}...")
     fitness_dict = load_fitness_scores_from_csv(
         args.fitness_csv,
         metrics=args.metrics,
     )
+
+    # Filter out candidates with NaN/inf fitness values
+    valid_indices = []
+    for i, key in enumerate(candidate_keys):
+        val = fitness_dict.get(key)
+        if val is None or not np.isfinite(val):
+            continue
+        valid_indices.append(i)
+
+    if len(valid_indices) != len(candidate_keys):
+        dropped = len(candidate_keys) - len(valid_indices)
+        logging.info(f"Dropped {dropped} candidates with NaN/inf fitness scores")
+
+    candidate_keys = [candidate_keys[i] for i in valid_indices]
+    X = X[valid_indices]
+    fitness_dict = {k: fitness_dict[k] for k in candidate_keys}
     
     # Load D-optimal weights if provided
     d_opt_weights = None

@@ -6,6 +6,7 @@ from typing import Tuple, Dict
 import numpy as np
 from scipy.optimize import minimize, LinearConstraint, Bounds
 from scipy.optimize import linprog
+import pandas as pd
 
 def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     """
@@ -94,7 +95,7 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
         print("Optimization success:", result.success)
         print("Final objective (-logdet):", fun(w_opt))
         print(f"g_star value:{g_star:.4f}")
-    breakpoint()
+    
     return w_opt, result
 
 
@@ -208,21 +209,34 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
     return w, history
 
 
-def load_features_from_file(features_path: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
+def load_features_from_file(features_path: Path, fitness_csv: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
     
     Args:
         features_path: Path to the .npy file containing features
+        fitness_csv: Path to the CSV file with fitness scores
     Returns:
         Tuple of (feature_matrix, candidate_keys, metadata)
         - feature_matrix: np.ndarray of shape (N, d) where N is number of candidates
         - candidate_keys: List of candidate keys in the same order as rows in feature_matrix
         - metadata: Dictionary with feature information
     """
+    df = pd.read_csv(fitness_csv)
+    fitness_dict = {}
+    for idx, row in df.iterrows():
+        key_val = str(row["Key"])
+        fitness_dict[key_val] = float(row["Fitness"])
+
     data = np.load(features_path, allow_pickle=True).item()
-    
     candidate_keys = data["candidate_keys"]
+    
+    valid_indices = []
+    for i, key in enumerate(candidate_keys):
+        val = fitness_dict.get(key)
+        if val is None or not np.isfinite(val):
+            continue
+        valid_indices.append(i)
     
     if feature_type == "polynomial":
         feature_matrix = data["features"]
@@ -232,6 +246,15 @@ def load_features_from_file(features_path: Path, feature_type: str = "polynomial
         feature_matrix = data["original_features"]
         feature_names = data.get("original_feature_names", [])
         feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
+    
+    if not valid_indices:
+        raise ValueError("No valid candidates remain after filtering NaN/inf fitness values.")
+    if len(valid_indices) != len(candidate_keys):
+        dropped = len(candidate_keys) - len(valid_indices)
+        logging.info(f"Dropped {dropped} candidates with NaN/inf fitness scores")
+    
+    candidate_keys = [candidate_keys[i] for i in valid_indices]
+    feature_matrix = feature_matrix[valid_indices]
     
     logging.info(f"Using {feature_type} features: shape={feature_matrix.shape}")
     
@@ -243,42 +266,6 @@ def load_features_from_file(features_path: Path, feature_type: str = "polynomial
     }
     
     return feature_matrix, candidate_keys, metadata
-
-
-def load_labels_for_candidates(
-    hmsa_results_path: Path,
-    selected_candidate_keys: list,
-) -> Dict[str, Tuple[float, float]]:
-    """
-    Load labels (costs) for selected candidates from HMSA results JSON.
-    
-    Args:
-        hmsa_results_path: Path to hmsa_results.json
-        selected_candidate_keys: List of candidate keys to extract labels for
-    
-    Returns:
-        Dictionary mapping candidate keys to (cut_size, area_imbalance) labels
-    """
-    import json
-    
-    with open(hmsa_results_path, "r") as fp:
-        data = json.load(fp)
-    
-    labels_dict = {}
-    selected_set = set(selected_candidate_keys)
-    
-    for key, entry in data["pareto_archive"]["solutions"].items():
-        if key in selected_set:
-            cost = entry.get("cost", [0.0, 0.0])
-            cut_size = float(cost[0])
-            area_imbalance = float(cost[1])
-            labels_dict[key] = (cut_size, area_imbalance)
-    
-    if len(labels_dict) != len(selected_candidate_keys):
-        missing = set(selected_candidate_keys) - set(labels_dict.keys())
-        logging.warning(f"Warning: {len(missing)} selected candidates not found in JSON: {list(missing)[:5]}...")
-    
-    return labels_dict
 
 
 def select_candidates_by_weights(
@@ -336,6 +323,7 @@ def select_candidates_by_weights(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
     parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
                        help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
@@ -367,7 +355,7 @@ def main() -> None:
     
     # Load features
     logging.info(f"Loading features from {args.features_file}...")
-    X, candidate_keys, metadata = load_features_from_file(args.features_file, args.feature_type)
+    X, candidate_keys, metadata = load_features_from_file(args.features_file, args.fitness_csv, args.feature_type)
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
     r = np.sum(S > 1e-8)
     logging.info(f"Effective rank of feature matrix: {r}")

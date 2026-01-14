@@ -572,7 +572,7 @@ def cal_fitness_score(df, metrics):
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "bp_fe"
+    dataset_name = "bp_quad"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
