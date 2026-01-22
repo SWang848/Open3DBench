@@ -238,14 +238,9 @@ def load_features_from_file(features_path: Path, fitness_csv: Path, feature_type
             continue
         valid_indices.append(i)
     
-    if feature_type == "polynomial":
-        feature_matrix = data["features"]
-        feature_names = data.get("feature_names", [])
-        feature_dim = data.get("feature_dim", feature_matrix.shape[1])
-    else:
-        feature_matrix = data["original_features"]
-        feature_names = data.get("original_feature_names", [])
-        feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
+    feature_matrix = data["features"]
+    feature_names = data.get("feature_names", [])
+    feature_dim = data.get("feature_dim", feature_matrix.shape[1])
     
     if not valid_indices:
         raise ValueError("No valid candidates remain after filtering NaN/inf fitness values.")
@@ -333,7 +328,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
     parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results")
     parser.add_argument("--top-k", type=int, default=None, help="Select top K candidates by weight")
-    parser.add_argument("--threshold", type=float, default=None, help="Select candidates with weight >= threshold")
+    parser.add_argument("--threshold", type=float, default=1e-6, help="Select candidates with weight >= threshold")
     parser.add_argument("--verbose", action="store_true", help="Verbose output during optimization")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
@@ -401,9 +396,10 @@ def main() -> None:
         
     logging.info(f"D-optimal design completed.")
     # logging.info(f"  Final objective: {history['f'][-1]:.4f}")
-    logging.info(f"  Number of non-zero weights: {(w > 1e-6).sum()}")
+    logging.info(f"  Weights: {w}")
+    logging.info(f"  Number of non-zero weights: {(w > args.threshold).sum()}")
     logging.info(f"  Max weight: {w.max():.6f}")
-    logging.info(f"  Min weight: {w[w > 1e-6].min() if (w > 1e-6).any() else 0:.6f}")
+    logging.info(f"  Min weight: {w[w > args.threshold].min() if (w > args.threshold).any() else 0:.6f}")
     
     # Select candidates based on weights
     selected_indices, normalized_weights = select_candidates_by_weights(

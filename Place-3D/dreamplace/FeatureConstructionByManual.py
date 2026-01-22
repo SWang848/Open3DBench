@@ -355,12 +355,12 @@ def main() -> None:
     manual_features_dict = extract_manual_features(candidates, placedb)
     candidate_keys = list(manual_features_dict.keys())
     len_hierarchy_features = len(manual_features_dict[candidate_keys[0]]) - 7 # 7 is the number of original features
-    original_feature_names = [
+    manual_feature_names = [
         "f0_normalized_cut_size", "f1_normalized_area_imbalance", "f2_macro_count_imbalance", 
         "f3_min_cut_degree", "f4_max_cut_degree", "f5_mean_cut_degree", "f6_std_cut_degree"
     ]
-    original_feature_names += [f"hierarchy_cohesion_{i}" for i in range(len_hierarchy_features)]
-    original_features_matrix = np.array([manual_features_dict[key] for key in candidate_keys])
+    manual_feature_names += [f"hierarchy_cohesion_{i}" for i in range(len_hierarchy_features)]
+    manual_features_matrix = np.array([manual_features_dict[key] for key in candidate_keys])
 
     if args.polynomial_features:
         polynomial_features_dict, poly_transformer = apply_polynomial_features(
@@ -369,10 +369,10 @@ def main() -> None:
             include_bias=args.include_bias,
         )
         features_dict = polynomial_features_dict
-        feature_names = np.array(poly_transformer.get_feature_names_out(original_feature_names))
+        feature_names = np.array(poly_transformer.get_feature_names_out(manual_feature_names))
     else:
         features_dict = manual_features_dict
-        feature_names = np.array(original_feature_names)    
+        feature_names = np.array(manual_feature_names)    
     
     # Run QR decomposition to identify linearly dependent columns
     features_matrix = np.array([features_dict[key] for key in candidate_keys])
@@ -396,19 +396,19 @@ def main() -> None:
     feature_names = feature_names[independent_columns]
     
     # Compute and log rank (for viewing only, not saved)
-    original_rank = np.linalg.matrix_rank(original_features_matrix)
-    rank = np.linalg.matrix_rank(features_matrix)
-    feature_type = "polynomial" if args.polynomial_features else "original"
-    logging.info(f"Feature matrix ranks: original={original_rank}/{original_features_matrix.shape[1]}, "
-                 f"{feature_type}={rank}/{features_matrix.shape[1]}")
+    original_rank = np.linalg.matrix_rank(manual_features_matrix)
+    current_rank = np.linalg.matrix_rank(features_matrix)
+    feature_type = "polynomial" if args.polynomial_features else "manual"
+    logging.info(f"Manual feature matrix rank/dimension: {original_rank}/{manual_features_matrix.shape[1]}, "
+                 f"Current feature ({feature_type}) matrix rank/dimension: {current_rank}/{features_matrix.shape[1]}")
     
     output_data = {
         "candidate_keys": candidate_keys,
-        "original_features": original_features_matrix,
+        "manual_features": manual_features_matrix,
         "features": features_matrix,
-        "original_feature_names": original_feature_names,
+        "manual_feature_names": manual_feature_names,
         "feature_names": feature_names.tolist(),
-        "original_feature_dim": len(original_feature_names),
+        "manual_feature_dim": len(manual_feature_names),
         "feature_dim": features_matrix.shape[1],
         "polynomial_degree": args.polynomial_degree,
         "polynomial_include_bias": args.include_bias,
@@ -417,7 +417,7 @@ def main() -> None:
     np.save(output_path, output_data, allow_pickle=True)
     
     for i, (key, features) in enumerate(list(manual_features_dict.items())[:5]):
-        logging.info(f"  Sample original features for '{key}': {features.tolist()}")
+        logging.info(f"  Sample manual features for '{key}': {features.tolist()}")
 
     if args.polynomial_features:
         for i, (key, features) in enumerate(list(polynomial_features_dict.items())[:5]):

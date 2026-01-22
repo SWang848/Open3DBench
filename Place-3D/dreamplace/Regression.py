@@ -21,7 +21,7 @@ sys.path.append(os.path.join(root_dir, "HMSA_solution_eval"))
 from get_metrics import cal_fitness_score
 
 
-def load_features_from_file(features_path: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
+def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
     
@@ -34,16 +34,12 @@ def load_features_from_file(features_path: Path, feature_type: str = "polynomial
     data = np.load(features_path, allow_pickle=True).item()
     
     candidate_keys = data["candidate_keys"]
-    if feature_type == "polynomial":
-        feature_matrix = data["polynomial_features"]
-        feature_names = data.get("polynomial_feature_names", [])
-        feature_dim = data.get("polynomial_feature_dim", feature_matrix.shape[1])
-    else:
-        feature_matrix = data["original_features"]
-        feature_names = data.get("original_feature_names", [])
-        feature_dim = data.get("original_feature_dim", feature_matrix.shape[1])
     
-    logging.info(f"Loaded {feature_type} features: shape={feature_matrix.shape}")
+    feature_matrix = data["features"]
+    feature_names = data.get("feature_names", [])
+    feature_dim = data.get("feature_dim", feature_matrix.shape[1])
+    
+    logging.info(f"Loaded manual features: shape={feature_matrix.shape}")
     logging.info(f"  Number of candidates: {len(candidate_keys)}")
     logging.info(f"  Feature dimension: {feature_dim}")
     
@@ -227,7 +223,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train linear regression model on manual features.")
     parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
     parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
-    parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for regression")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
     parser.add_argument("--output", type=Path, default=None, help="Path to save trained model")
@@ -249,7 +244,7 @@ def main() -> None:
     output_path = args.output or (out_dir / "linear_regressor.pkl")
     
     logging.info(f"Loading features from {args.features_file}...")
-    X, candidate_keys, metadata = load_features_from_file(args.features_file, args.feature_type)
+    X, candidate_keys, metadata = load_features_from_file(args.features_file)
 
     logging.info(f"Loading fitness scores from {args.fitness_csv}...")
     fitness_dict = load_fitness_scores_from_csv(
@@ -391,7 +386,23 @@ def main() -> None:
     logging.info(f"  Candidates in union of top {k} (predicted or true): {len(union_keys)}")
     logging.info(f"  Kendall's tau: {tau:.4f}")
     logging.info(f"  p-value: {p_value:.4f}")
-
+    
+    # the coverage of the top 10 in coreset
+    top_10_coverage_coreset = []
+    top_10_coverage_prediction = []
+    if args.d_opt_results and args.d_opt_results.exists():
+        coreset_keys = [candidate_keys[i] for i in selected_indices]
+        for key in coreset_keys:
+            if key in top_k_true_keys:
+                rank = top_k_true_keys.index(key) + 1
+                top_10_coverage_coreset.append(rank)
+        for key in top_k_pred_keys:
+            if key in top_k_true_keys:
+                rank = top_k_true_keys.index(key) + 1
+                top_10_coverage_prediction.append(rank)
+        logging.info(f"Coverage of the top 10 in coreset: {top_10_coverage_coreset}")
+        logging.info(f"Coverage of the top 10 in prediction: {top_10_coverage_prediction}")
+        logging.info(f"Coverage of the top 10 in evaluation: {set(top_10_coverage_coreset+top_10_coverage_prediction)}")
 if __name__ == "__main__":
     main()
 
