@@ -572,7 +572,7 @@ def cal_fitness_score(df, metrics):
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "bp_quad"
+    dataset_name = "swerv_wrapper"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
@@ -592,7 +592,22 @@ if __name__ == "__main__":
     # metrics_to_normalize = ["DRT_WL"]
     
     # Create baseline row with baseline performance values
-    # baseline_performance = [0.132, 3815933.0, -6.972, -9955.35, 1.048]
+    # if dataset_name is ariane133:
+        # baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
+    # if dataset_name is ariane136:
+        # baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
+    # if dataset_name is swerv_wrapper:
+        # baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
+    # if dataset_name is bp:
+        # baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
+    # if dataset_name is bp_be:
+        # baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
+    # if dataset_name is bp_fe:
+        # baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
+    # if dataset_name is bp_multi:
+        # baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
+    # if dataset_name is bp_quad:
+        # baseline_performance = [0.1373, 40373016.0, -1.71014, -26833.4, 1.82971]
     # baseline_row = {col: None for col in final_df.columns}
     # baseline_row['Idx'] = 'baseline'
     # for i, metric in enumerate(metrics_to_normalize):
