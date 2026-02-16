@@ -270,6 +270,7 @@ def extract_manual_features(
         hierarchy_features = compute_hierarchy_features(G, partition)
         # Combine all features: [f0, f1, f2, f3, f4, f5, f6, hierarchy_features]
         features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6] + list(hierarchy_features))
+        # features_dict[key] = np.array([f0, f1, f2, f3, f4, f5, f6])
     logging.info(f"Extracted features for {len(features_dict)} candidates")
     
     return features_dict

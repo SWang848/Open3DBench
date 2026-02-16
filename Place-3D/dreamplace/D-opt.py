@@ -274,7 +274,7 @@ def select_candidates_by_weights(
     Args:
         weights: Design weights from D-optimal algorithm
         candidate_keys: List of candidate keys
-        top_k: If provided, return top K candidates by weight
+        top_k: If provided, return top K percentage candidates by weight
         threshold: If provided, return candidates with weight >= threshold
     
     Returns:
@@ -282,9 +282,9 @@ def select_candidates_by_weights(
         are the selected weights renormalized to sum to 1
     """
     if top_k is not None:
-        # Select top K candidates by weight
-        selected_indices = np.argsort(weights)[-top_k:][::-1]
-        logging.info(f"Selected top {top_k} candidates by weight: {selected_indices}")
+        # Select top K percentage candidates by weight
+        selected_indices = np.argsort(weights)[-int(top_k * len(weights)) :][::-1]
+        logging.info(f"Selected top {top_k * 100}% candidates by weight: {selected_indices}")
     elif threshold is not None:
         # Select candidates above threshold
         selected_indices = np.where(weights >= threshold)[0]
@@ -327,7 +327,7 @@ def parse_args() -> argparse.Namespace:
                        help="Step size scheme (only used for Frank-Wolfe method)")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
     parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results")
-    parser.add_argument("--top-k", type=int, default=None, help="Select top K candidates by weight")
+    parser.add_argument("--top-k", type=float, default=None, help="Select top K percentage candidates by weight")
     parser.add_argument("--threshold", type=float, default=1e-6, help="Select candidates with weight >= threshold")
     parser.add_argument("--verbose", action="store_true", help="Verbose output during optimization")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
