@@ -118,7 +118,7 @@ def plot_pareto_front(
     plt.grid(True, alpha=0.3)
 
     cbar = plt.colorbar(scatter)
-    cbar.set_label("Fitness Score", fontsize=11, fontweight="bold")
+    cbar.set_label("Composite Cost", fontsize=11, fontweight="bold")
 
     top_points = plot_data.head(20).reset_index(drop=True)
     ax = plt.gca()
@@ -150,7 +150,6 @@ def plot_pareto_front(
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     logging.info("Pareto Archive plot saved to '%s'", save_path)
     plt.close()
-        
 def get_power(data):
     
     power = data.get("finish__power__total", None)
@@ -572,7 +571,7 @@ def cal_fitness_score(df, metrics):
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "swerv_wrapper"
+    dataset_name = "ariane136"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
@@ -592,31 +591,31 @@ if __name__ == "__main__":
     # metrics_to_normalize = ["DRT_WL"]
     
     # Create baseline row with baseline performance values
-    # if dataset_name is ariane133:
-        # baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
-    # if dataset_name is ariane136:
-        # baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
-    # if dataset_name is swerv_wrapper:
-        # baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
-    # if dataset_name is bp:
-        # baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
-    # if dataset_name is bp_be:
-        # baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
-    # if dataset_name is bp_fe:
-        # baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
-    # if dataset_name is bp_multi:
-        # baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
-    # if dataset_name is bp_quad:
-        # baseline_performance = [0.1373, 40373016.0, -1.71014, -26833.4, 1.82971]
-    # baseline_row = {col: None for col in final_df.columns}
-    # baseline_row['Idx'] = 'baseline'
-    # for i, metric in enumerate(metrics_to_normalize):
-    #     if metric in final_df.columns:
-    #         baseline_row[metric] = baseline_performance[i]
+    if dataset_name == "ariane133":
+        baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
+    if dataset_name == "ariane136":
+        baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
+    if dataset_name == "swerv_wrapper":
+        baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
+    if dataset_name == "bp":
+        baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
+    if dataset_name == "bp_be":
+        baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
+    if dataset_name == "bp_fe":
+        baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
+    if dataset_name == "bp_multi" or dataset_name == "bp_multi_2" or dataset_name == "bp_multi_3":
+        baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
+    if dataset_name == "bp_quad":
+        baseline_performance = [0.1373, 40373016.0, -1.71014, -26833.4, 1.82971]
+    baseline_row = {col: None for col in final_df.columns}
+    baseline_row['Idx'] = 'baseline'
+    for i, metric in enumerate(metrics_to_normalize):
+        if metric in final_df.columns:
+            baseline_row[metric] = baseline_performance[i]
     
     # Convert baseline_row to DataFrame and append to final_df
-    # baseline_df = pd.DataFrame([baseline_row])
-    # final_df = pd.concat([final_df, baseline_df], ignore_index=True)
+    baseline_df = pd.DataFrame([baseline_row])
+    final_df = pd.concat([final_df, baseline_df], ignore_index=True)
     
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
