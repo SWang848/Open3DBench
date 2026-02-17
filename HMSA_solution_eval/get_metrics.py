@@ -571,7 +571,7 @@ def cal_fitness_score(df, metrics):
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "ariane136"
+    dataset_name = "ariane136_2"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
@@ -593,7 +593,7 @@ if __name__ == "__main__":
     # Create baseline row with baseline performance values
     if dataset_name == "ariane133":
         baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
-    if dataset_name == "ariane136":
+    if dataset_name == "ariane136" or dataset_name == "ariane136_2":
         baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
     if dataset_name == "swerv_wrapper":
         baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
