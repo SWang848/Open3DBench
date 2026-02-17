@@ -373,19 +373,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='DREAMPlace 3D Placement with optional TPGNN or HMSA')
     parser.add_argument('json_file', type=str, help='Path to the JSON configuration file')
     parser.add_argument('solution_index', type=int, help='Index of the solution to select from candidates')
-    
+    parser.add_argument('--output', type=str, default=None, help='Path to save HMSA results')
+
     args = parser.parse_args()
         
     # Extract case name from JSON file path
     case_name = args.json_file.split("/")[-1].split(".")[0]
-    out_dir = f"./hmsa_results/{case_name}"
+    out_dir = args.output or f"./hmsa_results/{case_name}"
     os.makedirs(out_dir, exist_ok=True)
     
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
-                        # stream=sys.stdout)
-                        filename=f'./hmsa_results/{case_name}/placement_3D.log',
-                        filemode='w')
+                        stream=sys.stdout)
     
     params = Params.Params()
     seed_everything(params.random_seed)
@@ -402,9 +401,13 @@ if __name__ == "__main__":
     placedb = PlaceDB.PlaceDB()
     params.placed_def_input = ""
     placedb(params)
-    with open(f"./hmsa_results/{case_name}/hmsa_results.json", 'r') as f:
-        solutions = json.load(f)
-
+    if args.output is None:
+        with open(f"./hmsa_results/{case_name}/hmsa_results.json", 'r') as f:
+            solutions = json.load(f)
+    else:
+        with open(f"{args.output}/hmsa_results.json", 'r') as f:
+            solutions = json.load(f)
+    
     candidates = solutions['pareto_archive']['solutions']
     selected_key = list(candidates.keys())[args.solution_index]
     selected_candidate = candidates[selected_key]
