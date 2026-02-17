@@ -301,6 +301,7 @@ class HMSA:
         self.placedb: PlaceDB = placedb
         self.hierarchy_tree: HierarchyTree = HierarchyTree(placedb, case_name)
         self.root = self.hierarchy_tree.root
+        self.leaf_macro_nodes = self.root.get_all_leaf_descendants()
         self.total_area = self.hierarchy_tree.root.total_area
         self.nodes_by_level = self.hierarchy_tree.get_nodes_by_level()
         self.max_depth = max(self.nodes_by_level.keys())
@@ -545,7 +546,15 @@ class HMSA:
                 candidate_solution[to_part].append(macro_id)
         return candidate_solution
     
-    def run_annealing(self, T_max=500, T_min=0.1, gamma=0.95, steps_per_T=100, history: Optional[List[Dict[str, Any]]] = None) -> None:
+    def run_annealing(
+        self,
+        T_max=500,
+        T_min=0.1,
+        gamma=0.95,
+        steps_per_T=100,
+        history: Optional[List[Dict[str, Any]]] = None,
+        hierarchy_aware_move: bool = True,
+    ) -> None:
         T = T_max
         available_levels = sorted(self.nodes_by_level.keys())
     
@@ -562,26 +571,29 @@ class HMSA:
 
         while T > T_min:
             for _ in range(steps_per_T):
-                temp_ratio = (T - T_min) / (T_max - T_min)
-                
-                weights = []
-                baseline_weight = 0.1
-                
-                for level in available_levels:
-                    # Avoid division by zero if max_depth == 1
-                    if self.max_depth > 1:
-                        normal_depth = (level - 1) / (self.max_depth - 1) # 1 is finest move, 0 is coarsest move
-                    else:
-                        normal_depth = 0.5
+                if hierarchy_aware_move:
+                    temp_ratio = (T - T_min) / (T_max - T_min)
+                    weights = []
+                    baseline_weight = 0.1
 
-                    coarse_bias = (1.0 - normal_depth) * temp_ratio
-                    fine_bias = normal_depth * (1.0 - temp_ratio)
-                    
-                    final_weight = baseline_weight + coarse_bias + fine_bias
-                    weights.append(final_weight)
-                
-                chosen_level = random.choices(available_levels, weights=weights, k=1)[0]
-                node_to_move = random.choice(self.nodes_by_level[chosen_level])
+                    for level in available_levels:
+                        # Avoid division by zero if max_depth == 1
+                        if self.max_depth > 1:
+                            normal_depth = (level - 1) / (self.max_depth - 1) # 1 is finest move, 0 is coarsest move
+                        else:
+                            normal_depth = 0.5
+
+                        coarse_bias = (1.0 - normal_depth) * temp_ratio
+                        fine_bias = normal_depth * (1.0 - temp_ratio)
+
+                        final_weight = baseline_weight + coarse_bias + fine_bias
+                        weights.append(final_weight)
+
+                    chosen_level = random.choices(available_levels, weights=weights, k=1)[0]
+                    node_to_move = random.choice(self.nodes_by_level[chosen_level])
+                else:
+                    # Vanilla move: ignore hierarchy levels and pick one macro uniformly at random.
+                    node_to_move = random.choice(self.leaf_macro_nodes)
                 
                 delta_cut, delta_area = self.calculate_deltas(node_to_move)
                 
@@ -642,9 +654,17 @@ class HMSA:
         T_min: float = 0.1,
         gamma: float = 0.95,
         steps_per_T: int = 100,
+        hierarchy_aware_move: bool = True,
     ) -> List[Dict[str, Any]]:
         history: List[Dict[str, Any]] = []
-        self.run_annealing(T_max=T_max, T_min=T_min, gamma=gamma, steps_per_T=steps_per_T, history=history)
+        self.run_annealing(
+            T_max=T_max,
+            T_min=T_min,
+            gamma=gamma,
+            steps_per_T=steps_per_T,
+            history=history,
+            hierarchy_aware_move=hierarchy_aware_move,
+        )
         out_dir = os.path.dirname(output_path)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
@@ -658,6 +678,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
     parser.add_argument("--output", type=Path, default=None, help="Path to save HMSA results.")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--disable-hierarchy-aware-move",
+        action="store_true",
+        help="Disable hierarchy-aware level selection and use pure random (vanilla) macro moves.",
+    )
     return parser.parse_args()
 
 def main() -> None:
@@ -667,7 +692,7 @@ def main() -> None:
     params = Params.Params()
     
     case_name = args.params.stem
-    out_dir = f"./hmsa_results/{case_name}"
+    out_dir = f"./hmsa_results/{case_name}_2"
     os.makedirs(out_dir, exist_ok=True)
     
     # load parameters
@@ -684,7 +709,9 @@ def main() -> None:
     hmsa = HMSA(G, placedb, case_name=case_name)
     # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
-    pareto_archive = hmsa.run_annealing()
+    pareto_archive = hmsa.run_annealing(
+        hierarchy_aware_move=not args.disable_hierarchy_aware_move
+    )
     
     # # First-round candidates
     # candidates = candidate_selection(pareto_archive)
