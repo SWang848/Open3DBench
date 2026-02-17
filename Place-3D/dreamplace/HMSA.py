@@ -692,8 +692,12 @@ def main() -> None:
     params = Params.Params()
     
     case_name = args.params.stem
-    out_dir = f"./hmsa_results/{case_name}_2"
-    os.makedirs(out_dir, exist_ok=True)
+    if args.output is not None:
+        out_dir = args.output
+        os.makedirs(out_dir, exist_ok=True)
+    else:
+        out_dir = f"./hmsa_results/{case_name}"
+        os.makedirs(out_dir, exist_ok=True)
     
     # load parameters
     params.load(args.params)
