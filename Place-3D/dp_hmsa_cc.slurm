@@ -55,9 +55,14 @@ apptainer exec \
         cp \"\${REPO}/hmsa_results/\${DESIGN_NAME}_2/hmsa_results.json\" \"\${WORK}/hmsa_results/\${DESIGN_NAME}/\"
         
         # Run with GPU enabled (JSON already has gpu: 1)
+        START_TS=\$(date +%s)
+        echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Starting placement for \${DESIGN_NAME} idx=\${IDX}\"
         python \"\${REPO}/dreamplace/Placer_3D_hmsa.py\" \
             \"\${REPO}/test/or_3D/\${DESIGN_NAME}.json\" \
             \"\${IDX}\"
+        END_TS=\$(date +%s)
+        ELAPSED_SEC=\$((END_TS - START_TS))
+        echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Finished placement for \${DESIGN_NAME} idx=\${IDX} in \${ELAPSED_SEC}s\"
 
         cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${OUT_BASE}/\" || true
         echo \"done. Outputs in: \${OUT_BASE}\"

@@ -368,17 +368,15 @@ def get_overflow(log_content):
 def get_Metric_in(finalJson, routeJson, placedpLog, gproutefile, fpjson, grouteJson, resizefile, upper_log, bottom_log, cost, key):
 
     if finalJson is None:
-        upper_log = load_file(upper_log)
-        bottom_log = load_file(bottom_log)
         metric = {}
         metric["Key"] = key
         metric["Cut_size"], metric["Area_imbalance"] = cost[0], cost[1]
-        metric["U_wHPWL"] = get_wHPWL(upper_log)
-        metric["B_wHPWL"] = get_wHPWL(bottom_log)
-        metric["U_overflow"] = get_overflow(upper_log)
-        metric["B_overflow"] = get_overflow(bottom_log)
-        metric["total_wHPWL"] = metric["U_wHPWL"] + metric["B_wHPWL"]
-        metric["total_overflow"] = metric["U_overflow"] + metric["B_overflow"]
+        metric["U_wHPWL"] = None
+        metric["B_wHPWL"] = None
+        metric["U_overflow"] = None
+        metric["B_overflow"] = None
+        metric["total_wHPWL"] = None
+        metric["total_overflow"] = None
         
         metric["PRE_RESIZE_WNS"], metric["PRE_RESIZE_TNS"], metric["POST_RESIZE_WNS"], metric["POST_RESIZE_TNS"] = None, None, None, None
         metric["Congestion"] = None
@@ -463,6 +461,10 @@ def find_reports_in_dirs(base_dir):
                     "groute": os.path.join(solution_root, 'openroad_logs', '5_1_grt.json'),
                     "resize": os.path.join(solution_root, 'openroad_logs', '3_4_place_resized.log')
                 }
+                placement_reports[f"{design_name}_{solution_idx}"] = {
+                    "upper": os.path.join(solution_root, 'log_upper'),
+                    "bottom": os.path.join(solution_root, 'log_bottom_all')
+                }
             else:
                 report_files[f"{design_name}_{solution_idx}"] = {
                     'report': None,
@@ -473,10 +475,11 @@ def find_reports_in_dirs(base_dir):
                     'groute': None,
                     'resize': None
                 }
-            placement_reports[f"{design_name}_{solution_idx}"] = {
-                "upper": os.path.join(solution_root, 'log_upper'),
-                "bottom": os.path.join(solution_root, 'log_bottom_all')
-            }
+                placement_reports[f"{design_name}_{solution_idx}"] = {
+                    "upper": None,
+                    "bottom": None
+                }
+            
         elif os.path.isfile(solution_root) and solution_root.endswith('.json'):
             solution_log = solution_root
     return report_files, placement_reports, solution_log
@@ -571,7 +574,7 @@ def cal_fitness_score(df, metrics):
 
 if __name__ == "__main__":
     dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "ariane136_2"
+    dataset_name = "ariane133_2"
     dir_path = os.path.join(dir_path, dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
@@ -591,7 +594,7 @@ if __name__ == "__main__":
     # metrics_to_normalize = ["DRT_WL"]
     
     # Create baseline row with baseline performance values
-    if dataset_name == "ariane133":
+    if dataset_name.startswith("ariane133"):
         baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
     if dataset_name == "ariane136" or dataset_name == "ariane136_2":
         baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]

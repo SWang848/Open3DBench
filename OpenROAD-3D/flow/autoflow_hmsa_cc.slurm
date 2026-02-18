@@ -153,6 +153,9 @@ apptainer exec \
         # -----------------------------
         # Run make commands for this solution
         # -----------------------------
+        START_TS=\$(date +%s)
+        echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Starting OpenROAD flow for \${CASE_NAME} idx=\${IDX}\"
+
         echo \"Running autoflow for solution index: \${IDX}\"
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config_upper_shrink.mk do-autoflow
 
@@ -164,12 +167,16 @@ apptainer exec \
         # No need to override HOTSPOT_OUTPUT or HOTSPOT_EXAMPLES_DIR - defaults work correctly
         make DESIGN_CONFIG=designs/nangate45_3D/\${DESIGN_NAME}/config.mk do-hotspot
 
+        END_TS=\$(date +%s)
+        ELAPSED_SEC=\$((END_TS - START_TS))
+        echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Finished OpenROAD flow for \${CASE_NAME} idx=\${IDX} in \${ELAPSED_SEC}s\"
+
         # Zip and move results (trap will also handle this on failure)
-        echo \"Zipping results...\"
+        echo \"Zipping logs...\"
         (cd \"./logs/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_logs.zip\" *) || true
-        (cd \"./results/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_results.zip\" *) || true
+        # (cd \"./results/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_results.zip\" *) || true
         mv \"./openroad_logs.zip\" \"\${SOLUTION_DIR}/\"
-        mv \"./openroad_results.zip\" \"\${SOLUTION_DIR}/\"
+        # mv \"./openroad_results.zip\" \"\${SOLUTION_DIR}/\"
 
         echo \"Completed processing solution index: \${IDX}\"
         echo \"Results saved to: \${SOLUTION_DIR}\"
