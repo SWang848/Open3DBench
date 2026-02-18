@@ -379,8 +379,6 @@ if __name__ == "__main__":
         
     # Extract case name from JSON file path
     case_name = args.json_file.split("/")[-1].split(".")[0]
-    out_dir = args.output or f"./hmsa_results/{case_name}"
-    os.makedirs(out_dir, exist_ok=True)
     
     logging.basicConfig(level=logging.INFO,
                         format='[%(levelname)-7s] %(name)s - %(message)s',
