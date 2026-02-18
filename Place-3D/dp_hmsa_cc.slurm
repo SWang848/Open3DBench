@@ -52,7 +52,7 @@ apptainer exec \
             ls -la \"\${REPO}/hmsa_results/\" || true
             exit 1
         fi
-        cp \"\${REPO}/hmsa_results/\${DESIGN_NAME}/hmsa_results.json\" \"\${WORK}/hmsa_results/\${DESIGN_NAME}/\"
+        cp \"\${REPO}/hmsa_results/\${DESIGN_NAME}_2/hmsa_results.json\" \"\${WORK}/hmsa_results/\${DESIGN_NAME}/\"
         
         # Run with GPU enabled (JSON already has gpu: 1)
         python \"\${REPO}/dreamplace/Placer_3D_hmsa.py\" \
