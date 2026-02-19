@@ -4,7 +4,8 @@ import json
 import pdb
 import logging
 from typing import Dict, Tuple, List, Optional, Sequence, Mapping, Any
-
+from pathlib import Path
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -571,11 +572,17 @@ def cal_fitness_score(df, metrics):
 
     return result_df, best_values
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Get PPA metrics from solution evaluation")
+    parser.add_argument("dataset_name", type=str, help="Name of the dataset")
+    parser.add_argument("--dir_path", type=Path, default=os.path.join(os.path.dirname(__file__)), help="Path to the directory containing the dataset")
+    parser.add_argument("--plot_path", type=Path, default=os.path.join(os.path.dirname(__file__)), help="Path to the directory containing the plots")
+    parser.add_argument("--metrics_to_normalize", type=list, default=["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"], help="Metrics to normalize")
+    return parser.parse_args()
 
-if __name__ == "__main__":
-    dir_path = os.path.join(os.path.dirname(__file__))
-    dataset_name = "ariane133_2"
-    dir_path = os.path.join(dir_path, dataset_name)
+def main():
+    args = parse_args()
+    dir_path = os.path.join(args.dir_path, args.dataset_name)
     metric_dict = getMetrics(dir_path=dir_path)
     
     dataframes = []
@@ -594,21 +601,21 @@ if __name__ == "__main__":
     # metrics_to_normalize = ["DRT_WL"]
     
     # Create baseline row with baseline performance values
-    if dataset_name.startswith("ariane133"):
+    if args.dataset_name.startswith("ariane133"):
         baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
-    if dataset_name == "ariane136" or dataset_name == "ariane136_2":
+    if args.dataset_name.startswith("ariane136"):
         baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
-    if dataset_name == "swerv_wrapper":
+    if args.dataset_name.startswith("swerv_wrapper"):
         baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
-    if dataset_name == "bp":
+    if args.dataset_name.startswith("bp"):
         baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
-    if dataset_name == "bp_be":
+    if args.dataset_name.startswith("bp_be"):
         baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
-    if dataset_name == "bp_fe":
+    if args.dataset_name.startswith("bp_fe"):
         baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
-    if dataset_name == "bp_multi" or dataset_name == "bp_multi_2" or dataset_name == "bp_multi_3":
+    if args.dataset_name.startswith("bp_multi"):
         baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
-    if dataset_name == "bp_quad":
+    if args.dataset_name.startswith("bp_quad"):
         baseline_performance = [0.1373, 40373016.0, -1.71014, -26833.4, 1.82971]
     baseline_row = {col: None for col in final_df.columns}
     baseline_row['Idx'] = 'baseline'
@@ -622,9 +629,9 @@ if __name__ == "__main__":
     
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
-    final_df.to_csv(f'{dataset_name}_final.csv', index=False)
+    final_df.to_csv(f'{args.dataset_name}_final.csv', index=False)
 
-    plot_path = os.path.join(dir_path, f"cutsize_imbalance.png")
+    plot_path = os.path.join(os.path.join(args.plot_path, args.dataset_name), "cutsize_imbalance.png")
     plot_pareto_front(
         final_df,
         x_col="Cut_size",
@@ -633,3 +640,8 @@ if __name__ == "__main__":
         save_path=plot_path,
         # max_points=20,
     )
+    
+
+if __name__ == "__main__":
+    main()
+    

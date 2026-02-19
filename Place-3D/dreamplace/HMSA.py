@@ -41,6 +41,8 @@ def graph_construction(db):
             G.add_node(node)
             node_area = db.node_size_x[node] * db.node_size_y[node]
             node_attrs[node] = {"is_macro": False, 
+                                # "x": db.node_x[node],
+                                # "y": db.node_y[node],
                                 "area": node_area,    # scale the area of cells
                                 "name": node_name.decode('utf-8'),
                                 "partition": BOTTOM_DIE}
@@ -710,8 +712,9 @@ def main() -> None:
     logging.info(f"Found {placedb.num_physical_nodes - placedb.num_terminal_NIs} positioned components")
     
     G = graph_construction(placedb)
+    nx.write_graphml(G, os.path.join(out_dir, "graph.graphml"))
     hmsa = HMSA(G, placedb, case_name=case_name)
-    # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
+    hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
     pareto_archive = hmsa.run_annealing(
         hierarchy_aware_move=not args.disable_hierarchy_aware_move
