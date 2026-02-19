@@ -3,7 +3,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --array=0-278
+#SBATCH --array=0-81
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
@@ -11,8 +11,8 @@ set -euo pipefail
 mkdir -p logs
 
 # Configuration - adjust these as needed
-CASE_NAME="bp"
-DESIGN_NAME="black_parrot"
+CASE_NAME="bp_be"
+DESIGN_NAME="bp_be_top"
 DESIGN_DIMENSION="3D"
 DEF_VERSION=${CASE_NAME}
 
