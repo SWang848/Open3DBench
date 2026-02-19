@@ -326,10 +326,11 @@ def main() -> None:
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
     
     case_name = args.params.stem
-    out_dir = Path("./regression_results") / case_name
-    out_dir.mkdir(parents=True, exist_ok=True)
-    
-    output_path = args.output or (out_dir / "manual_features.npy")
+    if args.output is not None:
+        out_dir = args.output
+    else:
+        out_dir = os.path.join(os.path.dirname(__file__), "regression_results", case_name)
+    os.makedirs(out_dir, exist_ok=True)
     
     if not args.hmsa_results.exists():
         raise FileNotFoundError(f"HMSA results file not found: {args.hmsa_results}")
@@ -415,7 +416,7 @@ def main() -> None:
         "polynomial_include_bias": args.include_bias,
     }
     
-    np.save(output_path, output_data, allow_pickle=True)
+    np.save(os.path.join(out_dir, "manual_features.npy"), output_data, allow_pickle=True)
     
     for i, (key, features) in enumerate(list(manual_features_dict.items())[:5]):
         logging.info(f"  Sample manual features for '{key}': {features.tolist()}")
