@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_cpu
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --array=0-491
+#SBATCH --array=0-256
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
 set -euo pipefail
 mkdir -p logs
 
-DESIGN_NAME="bp_quad_3D"
-CASE_NAME="bp_quad"
+DESIGN_NAME="bp_multi_3D"
+CASE_NAME="bp_multi"
 IDX="${SLURM_ARRAY_TASK_ID}"
 
 module load apptainer
