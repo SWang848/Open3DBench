@@ -409,7 +409,10 @@ def main() -> None:
     )
     
     # Prepare output
-    output_path = args.output or (args.features_file.parent / "d_optimal_results.npy")
+    if args.output is not None:
+        output_path = args.output
+    else:
+        output_path = os.path.join(args.features_file.parent, "d_optimal_results.npy")
     selected_candidates = [candidate_keys[i] for i in selected_indices]
 
     # breakpoint()
