@@ -680,6 +680,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
     parser.add_argument("--output", type=Path, default=None, help="Path to save HMSA results.")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--seed",type=int,default=None,help="Optional RNG seed for deterministic runs.")
     parser.add_argument(
         "--disable-hierarchy-aware-move",
         action="store_true",
@@ -690,6 +691,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        logging.info("Using RNG seed %d", args.seed)
     
     params = Params.Params()
     
