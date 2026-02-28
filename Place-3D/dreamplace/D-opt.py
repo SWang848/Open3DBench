@@ -210,9 +210,10 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
     return w, history
 
 
-def load_features_from_file(features_path: Path, fitness_csv: Path, feature_type: str = "polynomial") -> Tuple[np.ndarray, list, Dict]:
+def load_features_from_file(features_path: Path, fitness_csv: Path = None, feature_type: str = "original") -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
+    The fitness csv file is used to filter out candidates with NaN/inf fitness values.
     
     Args:
         features_path: Path to the .npy file containing features
@@ -223,35 +224,33 @@ def load_features_from_file(features_path: Path, fitness_csv: Path, feature_type
         - candidate_keys: List of candidate keys in the same order as rows in feature_matrix
         - metadata: Dictionary with feature information
     """
-    df = pd.read_csv(fitness_csv)
-    fitness_dict = {}
-    for idx, row in df.iterrows():
-        key_val = str(row["Key"])
-        fitness_dict[key_val] = float(row["Fitness"])
 
     data = np.load(features_path, allow_pickle=True).item()
     candidate_keys = data["candidate_keys"]
-    
-    valid_indices = []
-    for i, key in enumerate(candidate_keys):
-        val = fitness_dict.get(key)
-        if val is None or not np.isfinite(val):
-            continue
-        valid_indices.append(i)
-    
     feature_matrix = data["features"]
     feature_names = data.get("feature_names", [])
     feature_dim = data.get("feature_dim", feature_matrix.shape[1])
+
+    if fitness_csv is not None:
+        df = pd.read_csv(fitness_csv)
+        fitness_dict = {}
+        for idx, row in df.iterrows():
+            key_val = str(row["Key"])
+            fitness_dict[key_val] = float(row["Fitness"])
+
+        valid_indices = []
+        for i, key in enumerate(candidate_keys):
+            val = fitness_dict.get(key)
+            if val is None or not np.isfinite(val):
+                continue
+            valid_indices.append(i)
     
-    if not valid_indices:
-        raise ValueError("No valid candidates remain after filtering NaN/inf fitness values.")
-    if len(valid_indices) != len(candidate_keys):
-        dropped = len(candidate_keys) - len(valid_indices)
-        logging.info(f"Dropped {dropped} candidates with NaN/inf fitness scores")
-    
-    candidate_keys = [candidate_keys[i] for i in valid_indices]
-    feature_matrix = feature_matrix[valid_indices]
-    
+        if len(valid_indices) != len(candidate_keys):
+            dropped = len(candidate_keys) - len(valid_indices)
+            logging.info(f"Dropped {dropped} candidates with NaN/inf fitness scores")
+            candidate_keys = [candidate_keys[i] for i in valid_indices]
+            feature_matrix = feature_matrix[valid_indices]
+
     logging.info(f"Using {feature_type} features: shape={feature_matrix.shape}")
     
     metadata = {
@@ -318,8 +317,8 @@ def select_candidates_by_weights(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
-    parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
-    parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
+    parser.add_argument("features-file", type=Path, default=None, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("--fitness-csv", type=Path, default=None, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
                        help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
