@@ -77,6 +77,8 @@ fi
 
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PLACE_DIR="${REPO_ROOT}/Place-3D"
+FLOW_DIR="${REPO_ROOT}/OpenROAD-3D/flow"
 WORK="${SCRATCH}/${USER}/dopp_results/${DESIGN_NAME}/${SEED}"
 mkdir -p "${WORK}"
 
@@ -84,14 +86,15 @@ DESIGN_3D="${DESIGN_NAME}_3D"
 HMSA_OUT_DIR="${WORK}/hmsa_results/"
 REGRESSION_OUT_DIR="${WORK}/regression_results/"
 
+module load python
 module load apptainer
 mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}"
 
 echo "[1/5] Running HMSA pipeline in apptainer..."
 apptainer exec \
-  --bind "${REPO_ROOT}/Place-3D:/workspace" \
+  --bind "${PLACE_DIR}:/workspace" \
   --bind "${SCRATCH}:/scratch" \
-  "${REPO_ROOT}/Place-3D/dreamplace.sif" \
+  "${PLACE_DIR}/dreamplace.sif" \
   bash -lc "
     set -euo pipefail
     cd /workspace/install
@@ -111,39 +114,21 @@ apptainer exec \
     python dreamplace/D-opt.py \
       ${REGRESSION_OUT_DIR}/manual_features.npy \
       --threshold ${THRESHOLD} \
-      --output ${REGRESSION_OUT_DIR} 
-  "
-
-
-
-apptainer exec \
-  --bind "${PLACE_DIR}:/workspace" \
-  --bind "${REPO_ROOT}/HMSA_solution_eval:/workspace_eval" \
-  --bind "${SCRATCH}:/scratch" \
-  "${PLACE_DIR}/dreamplace.sif" \
-  bash -lc "
-    set -euo pipefail
-    cd /workspace/install
-    python dreamplace/D-opt.py \
-      dreamplace/regression_results/${DESIGN_3D}/manual_features.npy \
-      --fitness-csv /workspace_eval/$(basename "${FITNESS_CSV}") \
-      --method ${DOPT_METHOD} \
-      --threshold ${THRESHOLD} \
-      --output dreamplace/regression_results/${DESIGN_3D}/d_optimal_results.npy \
-      ${TOP_K:+--top-k ${TOP_K}}
+      --output ${REGRESSION_OUT_DIR}
   "
 
 echo "[4/5] Extracting selected indices..."
-python - <<PY
+ARRAY_SPEC="$(
+python - <<'PY'
 import numpy as np
 from pathlib import Path
 
-dopt = Path("${DOPT_FILE}")
+dopt = Path("${REGRESSION_OUT_DIR}/d_optimal_results.npy")
 if not dopt.exists():
     raise FileNotFoundError(f"D-opt result not found: {dopt}")
 
 data = np.load(dopt, allow_pickle=True).item()
-idx = data.get("selected_indices", None)
+idx = data.get("selected_indices")
 if idx is None:
     raise KeyError("selected_indices missing in d_optimal_results.npy")
 
@@ -151,17 +136,15 @@ idx = sorted({int(x) for x in idx})
 if not idx:
     raise ValueError("selected_indices is empty")
 
-out = Path("${SELECTED_TXT}")
-out.write_text(",".join(map(str, idx)) + "\n", encoding="utf-8")
-print(f"selected_count={len(idx)}")
-print(f"array_spec={','.join(map(str, idx))}")
+print(",".join(map(str, idx)))
 PY
+)"
 
-ARRAY_SPEC="$(tr -d '\n' < "${SELECTED_TXT}")"
 if [[ -z "${ARRAY_SPEC}" ]]; then
-  echo "Error: failed to build array spec from ${SELECTED_TXT}" >&2
+  echo "Error: selected indices are empty" >&2
   exit 1
 fi
+
 echo "Selected array indices: ${ARRAY_SPEC}"
 
 echo "[5/5] Preparing and submitting dependent array jobs..."
