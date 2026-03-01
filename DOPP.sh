@@ -7,7 +7,7 @@
 #SBATCH --error=/scratch/%u/dopp_logs/%x-%j.err
 
 set -euo pipefail
-mkdir -p /scratch/${USER}/dopp_logs
+mkdir -p /scratch/$USER/dopp_logs
 
 usage() {
   cat <<'EOF'
@@ -74,8 +74,6 @@ if [[ -z "${DESIGN_NAME}" ]]; then
   usage
   exit 1
 fi
-
-mkdir -p /scratch/${USER}/dopp_results/${DESIGN_NAME}/${SEED}/logs
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 PLACE_DIR="${REPO_ROOT}/Place-3D"
