@@ -1,0 +1,13 @@
+/scratch/<cc_username>/
+└── dopp_results/
+    ├── <design_name>/
+        └── <seed>/
+            └── hmsa_results/
+                ├── hmsa_results.json
+            └── regression_results/
+                ├── manual_features.npy
+                ├── d_optimal_results.npy
+            └── HMSA_solution_eval/
+                └── <design_name>_3D/
+                    └── <seed>/
+    ...
