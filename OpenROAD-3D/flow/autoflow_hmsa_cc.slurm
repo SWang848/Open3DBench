@@ -11,10 +11,9 @@ set -euo pipefail
 mkdir -p logs
 
 # Configuration (can be overridden via sbatch --export)
-CASE_NAME="${CASE_NAME:-swerv_wrapper}"
-DESIGN_NAME="${DESIGN_NAME:-swerv_wrapper}"
-DESIGN_DIMENSION="${DESIGN_DIMENSION:-3D}"
-DEF_VERSION=${CASE_NAME}
+CASE_NAME="${CASE_NAME}"
+DESIGN_NAME="${DESIGN_NAME}"
+HMSA_BASE_DIR="${HMSA_BASE_DIR:-/scratch/${USER}/HMSA_solution_eval/${CASE_NAME}_3D}"
 
 IDX="${SLURM_ARRAY_TASK_ID}"
 
@@ -32,8 +31,6 @@ apptainer exec \
         FLOW_DIR=/workspace
         CASE_NAME='${CASE_NAME}'
         export DESIGN_NAME='${DESIGN_NAME}'
-        export DESIGN_DIMENSION='${DESIGN_DIMENSION}'
-        export DEF_VERSION='${DEF_VERSION}'
         IDX='${IDX}'
         # SLURM array job variables (for log file naming)
         # %A in output format = SLURM_ARRAY_JOB_ID (master job ID)
@@ -41,7 +38,7 @@ apptainer exec \
         SLURM_ARRAY_JOB_ID='${SLURM_ARRAY_JOB_ID}'
         SLURM_ARRAY_TASK_ID='${SLURM_ARRAY_TASK_ID}'
 
-        HMSA_BASE_DIR=/scratch/\${USER}/HMSA_solution_eval/\${CASE_NAME}_3D
+        HMSA_BASE_DIR='${HMSA_BASE_DIR}'
         SOLUTION_DIR=\${HMSA_BASE_DIR}/\${IDX}
         DEF_FILE=\${SOLUTION_DIR}/\${CASE_NAME}_3D.gp.def
         

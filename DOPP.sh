@@ -32,8 +32,6 @@ This script runs:
 EOF
 }
 
-mkdir -p /scratch/${USER}/logs
-
 DESIGN_NAME=""
 FITNESS_CSV=""
 THRESHOLD="1e-6"
@@ -75,6 +73,7 @@ if [[ -z "${DESIGN_NAME}" ]]; then
   exit 1
 fi
 
+mkdir -p /scratch/${USER}/dopp_results/${DESIGN_NAME}/${SEED}/logs
 
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 PLACE_DIR="${REPO_ROOT}/Place-3D"
@@ -90,7 +89,6 @@ module load python
 module load apptainer
 mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}"
 
-echo "[1/5] Running HMSA pipeline in apptainer..."
 apptainer exec \
   --bind "${PLACE_DIR}:/workspace" \
   --bind "${SCRATCH}:/scratch" \
@@ -98,6 +96,7 @@ apptainer exec \
   bash -lc "
     set -euo pipefail
     cd /workspace/install
+    echo "[1/5] Running HMSA candidate generation in apptainer..."
     python dreamplace/HierarchyMultiObjectiveSA.py \
       test/or_3D/${DESIGN_3D}.json \
       --output ${HMSA_OUT_DIR} \
@@ -147,7 +146,7 @@ fi
 
 echo "Selected array indices: ${ARRAY_SPEC}"
 
-echo "[5/5] Preparing and submitting dependent array jobs..."
+echo "[4/5] Preparing and submitting dependent array jobs..."
 DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
 OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
 
@@ -178,9 +177,22 @@ if [[ -z "${OR_JOB_ID}" ]]; then
   echo "Error: failed to parse OpenROAD job id from: ${OR_SUBMIT_MSG}" >&2
   exit 1
 fi
-
-echo
 echo "Submitted placement array job : ${DP_JOB_ID}"
 echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (afterok:${DP_JOB_ID})"
-echo "Selected indices file:"
-echo "  ${SELECTED_TXT}"
+
+apptainer exec \
+  --bind "${PLACE_DIR}:/workspace" \
+  --bind "${SCRATCH}:/scratch" \
+  "${PLACE_DIR}/dreamplace.sif" \
+  bash -lc "
+    set -euo pipefail
+    cd /workspace/install
+    echo "[5/5] Running weighted regression in apptainer..."
+    python dreamplace/Regression.py \
+      ${REGRESSION_OUT_DIR}/manual_features.npy \
+      ${FITNESS_CSV} \
+      --d-opt-results ${REGRESSION_OUT_DIR}/d_optimal_results.npy \
+      --output ${REGRESSION_OUT_DIR}
+  "
+
+

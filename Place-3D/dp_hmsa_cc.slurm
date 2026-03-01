@@ -14,6 +14,7 @@ DESIGN_NAME="${DESIGN_NAME}"
 CASE_NAME="${CASE_NAME}"
 HMSA_RESULTS_DIR="${HMSA_RESULTS_DIR}"
 IDX="${SLURM_ARRAY_TASK_ID}"
+OUT_BASE="${OUT_BASE:-/scratch/${USER}/HMSA_solution_eval/${DESIGN_NAME}/${IDX}}"
 
 module load apptainer
 
@@ -28,8 +29,8 @@ apptainer exec \
         DESIGN_NAME=\"${DESIGN_NAME}\"
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
+        OUT_BASE='${OUT_BASE}'
 
-        OUT_BASE=/scratch/\${USER}/HMSA_solution_eval/\${DESIGN_NAME}/\${IDX}
         mkdir -p \"\${OUT_BASE}\"
 
         # per-task isolated working directory on tmp_slurm (fast local I/O)
