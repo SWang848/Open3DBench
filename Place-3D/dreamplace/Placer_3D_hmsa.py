@@ -373,7 +373,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='DREAMPlace 3D Placement with optional TPGNN or HMSA')
     parser.add_argument('json_file', type=str, help='Path to the JSON configuration file')
     parser.add_argument('solution_index', type=int, help='Index of the solution to select from candidates')
-    parser.add_argument('--output', type=str, default=None, help='Path to save HMSA results')
+    parser.add_argument('--hmsa_results_dir', type=str, default=None, help='Path to HMSA results directory')
 
     args = parser.parse_args()
         
@@ -399,11 +399,11 @@ if __name__ == "__main__":
     placedb = PlaceDB.PlaceDB()
     params.placed_def_input = ""
     placedb(params)
-    if args.output is None:
+    if args.hmsa_results_dir is None:
         with open(f"./hmsa_results/{case_name}/hmsa_results.json", 'r') as f:
             solutions = json.load(f)
     else:
-        with open(f"{args.output}/hmsa_results.json", 'r') as f:
+        with open(f"{args.hmsa_results_dir}/hmsa_results.json", 'r') as f:
             solutions = json.load(f)
     
     candidates = solutions['pareto_archive']['solutions']

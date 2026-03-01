@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=dopp
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=8
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --output=logs/%x-%j.out
-#SBATCH --error=logs/%x-%j.err
+#SBATCH --output=/scratch/${USER}/logs/%x-%j.out
+#SBATCH --error=/scratch/${USER}/logs/%x-%j.err
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ This script runs:
 EOF
 }
 
-mkdir -p logs
+mkdir -p /scratch/${USER}/logs
 
 DESIGN_NAME=""
 FITNESS_CSV=""
@@ -150,29 +150,14 @@ echo "Selected array indices: ${ARRAY_SPEC}"
 echo "[5/5] Preparing and submitting dependent array jobs..."
 DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
 OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
-DP_JOB="${TMP_DIR}/dp_hmsa_cc.${DESIGN_NAME}.slurm"
-OR_JOB="${TMP_DIR}/autoflow_hmsa_cc.${DESIGN_NAME}.slurm"
 
-if [[ ! -f "${DP_TEMPLATE}" || ! -f "${OR_TEMPLATE}" ]]; then
-  echo "Error: template slurm scripts not found." >&2
-  exit 1
-fi
-
-sed \
-  -e "s|^DESIGN_NAME=.*|DESIGN_NAME=\"${DESIGN_3D}\"|g" \
-  -e "s|^CASE_NAME=.*|CASE_NAME=\"${DESIGN_NAME}\"|g" \
-  "${DP_TEMPLATE}" > "${DP_JOB}"
-
-sed \
-  -e "s|^CASE_NAME=.*|CASE_NAME=\"${DESIGN_NAME}\"|g" \
-  -e "s|^DESIGN_NAME=.*|DESIGN_NAME=\"${DESIGN_NAME}\"|g" \
-  "${OR_TEMPLATE}" > "${OR_JOB}"
-
-chmod +x "${DP_JOB}" "${OR_JOB}"
 
 DP_SUBMIT_MSG="$(
   cd "${PLACE_DIR}" && \
-  sbatch --array="${ARRAY_SPEC}" "${DP_JOB}"
+  sbatch \
+    --array="${ARRAY_SPEC}" \
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}"\
+    "${DP_TEMPLATE}"
 )"
 DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}')"
 if [[ -z "${DP_JOB_ID}" ]]; then
@@ -182,7 +167,11 @@ fi
 
 OR_SUBMIT_MSG="$(
   cd "${FLOW_DIR}" && \
-  sbatch --dependency=afterok:"${DP_JOB_ID}" --array="${ARRAY_SPEC}" "${OR_JOB}"
+  sbatch \
+    --dependency=afterok:"${DP_JOB_ID}" \
+    --array="${ARRAY_SPEC}" \
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}" \
+    "${OR_TEMPLATE}"
 )"
 OR_JOB_ID="$(echo "${OR_SUBMIT_MSG}" | awk '{print $4}')"
 if [[ -z "${OR_JOB_ID}" ]]; then
@@ -193,8 +182,5 @@ fi
 echo
 echo "Submitted placement array job : ${DP_JOB_ID}"
 echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (afterok:${DP_JOB_ID})"
-echo "Generated scripts:"
-echo "  ${DP_JOB}"
-echo "  ${OR_JOB}"
 echo "Selected indices file:"
 echo "  ${SELECTED_TXT}"

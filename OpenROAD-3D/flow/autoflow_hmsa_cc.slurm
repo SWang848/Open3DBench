@@ -10,10 +10,10 @@
 set -euo pipefail
 mkdir -p logs
 
-# Configuration - adjust these as needed
-CASE_NAME="swerv_wrapper"
-DESIGN_NAME="swerv_wrapper"
-DESIGN_DIMENSION="3D"
+# Configuration (can be overridden via sbatch --export)
+CASE_NAME="${CASE_NAME:-swerv_wrapper}"
+DESIGN_NAME="${DESIGN_NAME:-swerv_wrapper}"
+DESIGN_DIMENSION="${DESIGN_DIMENSION:-3D}"
 DEF_VERSION=${CASE_NAME}
 
 IDX="${SLURM_ARRAY_TASK_ID}"
