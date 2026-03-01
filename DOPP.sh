@@ -96,24 +96,24 @@ apptainer exec \
   bash -lc "
     set -euo pipefail
     cd /workspace/install
-    echo "[1/5] Running HMSA candidate generation in apptainer..."
+    echo '[1/5] Running HMSA candidate generation in apptainer...'
     python dreamplace/HierarchyMultiObjectiveSA.py \
-      test/or_3D/${DESIGN_3D}.json \
-      --output ${HMSA_OUT_DIR} \
-      --seed ${SEED}
+      test/or_3D/\"${DESIGN_3D}\".json \
+      --output \"${HMSA_OUT_DIR}\" \
+      --seed \"${SEED}\"
 
-    echo "[2/5] Running feature construction in apptainer..."
+    echo '[2/5] Running feature construction in apptainer...'
       
     python dreamplace/FeatureConstructionByManual.py \
-      test/or_3D/${DESIGN_3D}.json \
-      ${HMSA_OUT_DIR}/hmsa_results.json \
-      --output ${REGRESSION_OUT_DIR}
+      test/or_3D/\"${DESIGN_3D}\".json \
+      \"${HMSA_OUT_DIR}\"/hmsa_results.json \
+      --output \"${REGRESSION_OUT_DIR}\"
 
-    echo "[3/5] Running D-opt in apptainer..."
+    echo '[3/5] Running D-opt in apptainer...'
     python dreamplace/D-opt.py \
-      ${REGRESSION_OUT_DIR}/manual_features.npy \
-      --threshold ${THRESHOLD} \
-      --output ${REGRESSION_OUT_DIR}
+      \"${REGRESSION_OUT_DIR}\"/manual_features.npy \
+      --threshold \"${THRESHOLD}\" \
+      --output \"${REGRESSION_OUT_DIR}\"
   "
 
 # echo "[4/5] Extracting selected indices..."
@@ -146,7 +146,7 @@ apptainer exec \
 
 # echo "Selected array indices: ${ARRAY_SPEC}"
 
-# echo "[4/5] Preparing and submitting dependent array jobs..."
+# echo '[4/5] Preparing and submitting dependent array jobs...'
 # DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
 # OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
 
@@ -187,7 +187,7 @@ apptainer exec \
 #   bash -lc "
 #     set -euo pipefail
 #     cd /workspace/install
-#     echo "[5/5] Running weighted regression in apptainer..."
+#     echo '[5/5] Running weighted regression in apptainer...'
 #     python dreamplace/Regression.py \
 #       ${REGRESSION_OUT_DIR}/manual_features.npy \
 #       ${FITNESS_CSV} \
