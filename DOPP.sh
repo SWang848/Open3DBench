@@ -2,7 +2,7 @@
 #SBATCH --job-name=dopp
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=16G
 #SBATCH --output=/scratch/%u/dopp_logs/%x-%j.out
 #SBATCH --error=/scratch/%u/dopp_logs/%x-%j.err
 
@@ -96,6 +96,10 @@ apptainer exec \
   "${PLACE_DIR}/dreamplace.sif" \
   bash <<EOF
 set -euo pipefail
+cd "/workspace/build"
+cmake ..
+make -j 8
+make -j 8 install
 cd "/workspace/install"
 
 echo '[1/5] Running HMSA candidate generation in apptainer...'

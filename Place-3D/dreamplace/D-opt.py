@@ -317,7 +317,7 @@ def select_candidates_by_weights(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
-    parser.add_argument("features-file", type=Path, default=None, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("features-file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
     parser.add_argument("--fitness-csv", type=Path, default=None, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
