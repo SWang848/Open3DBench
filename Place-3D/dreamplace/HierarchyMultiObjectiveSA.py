@@ -184,8 +184,8 @@ class HierarchyTree:
         self.root: HierarchyNode = HierarchyNode(hierarchy_name="root")
         self.construct_hierarchy_tree()
         self._calculate_cluster_areas(self.root)
-        # Plot the hierarchy tree structure
-        self.save_ascii_tree(os.path.join(f"./hmsa_results/{case_name}", "hierarchy_tree.txt"))
+        # # Plot the hierarchy tree structure
+        # self.save_ascii_tree(os.path.join(f"./hmsa_results/{case_name}", "hierarchy_tree.txt"))
         
     def construct_hierarchy_tree(self) -> None:
         area_sum = 0
@@ -719,6 +719,7 @@ def main() -> None:
     G = graph_construction(placedb)
     # nx.write_graphml(G, os.path.join(out_dir, "graph.graphml"))
     hmsa = HMSA(G, placedb, case_name=case_name)
+    hmsa.hierarchy_tree.save_ascii_tree(os.path.join(out_dir, "hierarchy_tree.txt"))
     # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
     pareto_archive = hmsa.run_annealing(

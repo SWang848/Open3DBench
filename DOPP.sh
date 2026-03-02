@@ -7,7 +7,7 @@
 #SBATCH --error=/scratch/%u/dopp_logs/%x-%j.err
 
 set -euo pipefail
-mkdir -p /scratch/$USER/dopp_logs
+mkdir -p "${SCRATCH}/dopp_logs"
 
 usage() {
   cat <<'EOF'
@@ -78,43 +78,44 @@ fi
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(pwd)}"
 PLACE_DIR="${REPO_ROOT}/Place-3D"
 FLOW_DIR="${REPO_ROOT}/OpenROAD-3D/flow"
-WORK="${SCRATCH}/${USER}/dopp_results/${DESIGN_NAME}/${SEED}"
+WORK="${SCRATCH}/dopp_results/${DESIGN_NAME}/${SEED}"
 mkdir -p "${WORK}"
 
 DESIGN_3D="${DESIGN_NAME}_3D"
 HMSA_OUT_DIR="${WORK}/hmsa_results/"
 REGRESSION_OUT_DIR="${WORK}/regression_results/"
+HMSA_SOLUTION_EVAL_DIR="${SCRATCH}/HMSA_solution_eval/${DESIGN_NAME}_3D"
 
 module load python
 module load apptainer
-mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}"
+mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}" "${HMSA_SOLUTION_EVAL_DIR}"
 
 apptainer exec \
   --bind "${PLACE_DIR}:/workspace" \
-  --bind "${SCRATCH}:/scratch" \
+  --bind "${SCRATCH}:${SCRATCH}" \
   "${PLACE_DIR}/dreamplace.sif" \
-  bash -lc "
-    set -euo pipefail
-    cd /workspace/install
-    echo '[1/5] Running HMSA candidate generation in apptainer...'
-    python dreamplace/HierarchyMultiObjectiveSA.py \
-      test/or_3D/\"${DESIGN_3D}\".json \
-      --output \"${HMSA_OUT_DIR}\" \
-      --seed \"${SEED}\"
+  bash <<EOF
+set -euo pipefail
+cd "/workspace/install"
 
-    echo '[2/5] Running feature construction in apptainer...'
-      
-    python dreamplace/FeatureConstructionByManual.py \
-      test/or_3D/\"${DESIGN_3D}\".json \
-      \"${HMSA_OUT_DIR}\"/hmsa_results.json \
-      --output \"${REGRESSION_OUT_DIR}\"
+echo '[1/5] Running HMSA candidate generation in apptainer...'
+python dreamplace/HierarchyMultiObjectiveSA.py \
+  "test/or_3D/${DESIGN_3D}.json" \
+  --output "${HMSA_OUT_DIR}" \
+  --seed "${SEED}"
 
-    echo '[3/5] Running D-opt in apptainer...'
-    python dreamplace/D-opt.py \
-      \"${REGRESSION_OUT_DIR}\"/manual_features.npy \
-      --threshold \"${THRESHOLD}\" \
-      --output \"${REGRESSION_OUT_DIR}\"
-  "
+echo '[2/5] Running feature construction in apptainer...'
+python dreamplace/FeatureConstructionByManual.py \
+  "test/or_3D/${DESIGN_3D}.json" \
+  "${HMSA_OUT_DIR}/hmsa_results.json" \
+  --output "${REGRESSION_OUT_DIR}"
+
+echo '[3/5] Running D-opt in apptainer...'
+python dreamplace/D-opt.py \
+  "${REGRESSION_OUT_DIR}/manual_features.npy" \
+  --threshold "${THRESHOLD}" \
+  --output "${REGRESSION_OUT_DIR}"
+EOF
 
 echo "[4/5] Extracting selected indices..."
 ARRAY_SPEC="$(
@@ -155,7 +156,7 @@ DP_SUBMIT_MSG="$(
   cd "${PLACE_DIR}" && \
   sbatch \
     --array="${ARRAY_SPEC}" \
-    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}"\
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}", HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}"\
     "${DP_TEMPLATE}"
 )"
 DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}')"
@@ -169,7 +170,7 @@ OR_SUBMIT_MSG="$(
   sbatch \
     --dependency=afterok:"${DP_JOB_ID}" \
     --array="${ARRAY_SPEC}" \
-    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}" \
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
     "${OR_TEMPLATE}"
 )"
 OR_JOB_ID="$(echo "${OR_SUBMIT_MSG}" | awk '{print $4}')"

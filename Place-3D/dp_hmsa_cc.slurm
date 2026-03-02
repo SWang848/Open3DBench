@@ -8,20 +8,20 @@
 #SBATCH --error=/scratch/%u/logs/%x-%A_%a.err
 
 set -euo pipefail
-mkdir -p /scratch/${USER}/logs
+mkdir -p "${SCRATCH}/dopp_logs"
 
 DESIGN_NAME="${DESIGN_NAME}"
 CASE_NAME="${CASE_NAME}"
 HMSA_RESULTS_DIR="${HMSA_RESULTS_DIR}"
 IDX="${SLURM_ARRAY_TASK_ID}"
-OUT_BASE="${OUT_BASE:-/scratch/${USER}/HMSA_solution_eval/${DESIGN_NAME}/${IDX}}"
+HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${DESIGN_NAME}/${IDX}}"
 
 module load apptainer
 
 # workspace is \Place-3D directory
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
-    --bind "${SCRATCH}:/scratch" \
+    --bind "${SCRATCH}:${SCRATCH}" \
     --bind "${SLURM_TMPDIR}:/tmp_slurm" \
     dreamplace.sif \
     bash -lc "
@@ -29,9 +29,9 @@ apptainer exec \
         DESIGN_NAME=\"${DESIGN_NAME}\"
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
-        OUT_BASE='${OUT_BASE}'
+        HMSA_SOLUTION_EVAL_DIR='${HMSA_SOLUTION_EVAL_DIR}'
 
-        mkdir -p \"\${OUT_BASE}\"
+        mkdir -p \"\${HMSA_SOLUTION_EVAL_DIR}\"
 
         # per-task isolated working directory on tmp_slurm (fast local I/O)
         WORK=/tmp_slurm/hmsa_dp_results/\${DESIGN_NAME}_\${IDX}
@@ -64,6 +64,6 @@ apptainer exec \
         ELAPSED_SEC=\$((END_TS - START_TS))
         echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Finished placement for \${DESIGN_NAME} idx=\${IDX} in \${ELAPSED_SEC}s\"
 
-        cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${OUT_BASE}/\" || true
-        echo \"done. Outputs in: \${OUT_BASE}\"
+        cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${HMSA_SOLUTION_EVAL_DIR}/\" || true
+        echo \"done. Outputs in: \${HMSA_SOLUTION_EVAL_DIR}\"
     "
