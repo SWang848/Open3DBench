@@ -14,7 +14,7 @@ mkdir -p logs
 CASE_NAME="${CASE_NAME}"
 DESIGN_NAME="${DESIGN_NAME}"
 IDX="${SLURM_ARRAY_TASK_ID}"
-HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${CASE_NAME}_3D/${IDX}}"
+HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${CASE_NAME}_3D}"
 
 module load apptainer
 
@@ -38,8 +38,7 @@ apptainer exec \
         SLURM_ARRAY_TASK_ID='${SLURM_ARRAY_TASK_ID}'
 
         HMSA_SOLUTION_EVAL_DIR='${HMSA_SOLUTION_EVAL_DIR}'
-        mkdir -p \"\${HMSA_SOLUTION_EVAL_DIR}\"
-        DEF_FILE=\${HMSA_SOLUTION_EVAL_DIR}/\${CASE_NAME}_3D.gp.def
+        DEF_FILE=\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/${CASE_NAME}_3D.gp.def
         
         # Function to copy logs on exit (success or failure)
         # Defined early so trap can catch errors from subsequent operations
@@ -47,8 +46,8 @@ apptainer exec \
             local exit_code=\$?
             echo \"Script exiting with code: \${exit_code}\"
             
-            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${SOLUTION_DIR}/\"
-            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${SOLUTION_DIR}/\"
+            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\"
+            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\"
             
             exit \${exit_code}
         }
@@ -171,9 +170,9 @@ apptainer exec \
         echo \"Zipping logs...\"
         (cd \"./logs/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_logs.zip\" *) || true
         # (cd \"./results/nangate45_3D/\${CASE_NAME}/3D\" && zip -r -0 \"\${WORK_DIR}/openroad_results.zip\" *) || true
-        mv \"./openroad_logs.zip\" \"\${HMSA_SOLUTION_EVAL_DIR}/\"
-        # mv \"./openroad_results.zip\" \"\${HMSA_SOLUTION_EVAL_DIR}/\"
+        mv \"./openroad_logs.zip\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\"
+        # mv \"./openroad_results.zip\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\"
 
         echo \"Completed processing solution index: \${IDX}\"
-        echo \"Results saved to: \${HMSA_SOLUTION_EVAL_DIR}\"
+        echo \"Results saved to: \${HMSA_SOLUTION_EVAL_DIR}/\${IDX}\"
     "

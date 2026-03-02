@@ -14,7 +14,7 @@ DESIGN_NAME="${DESIGN_NAME}"
 CASE_NAME="${CASE_NAME}"
 HMSA_RESULTS_DIR="${HMSA_RESULTS_DIR}"
 IDX="${SLURM_ARRAY_TASK_ID}"
-HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${DESIGN_NAME}/${IDX}}"
+HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${DESIGN_NAME}}"
 
 module load apptainer
 
@@ -31,7 +31,7 @@ apptainer exec \
         IDX=\"${IDX}\"
         HMSA_SOLUTION_EVAL_DIR='${HMSA_SOLUTION_EVAL_DIR}'
 
-        mkdir -p \"\${HMSA_SOLUTION_EVAL_DIR}\"
+        mkdir -p \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}\"
 
         # per-task isolated working directory on tmp_slurm (fast local I/O)
         WORK=/tmp_slurm/hmsa_dp_results/\${DESIGN_NAME}_\${IDX}
@@ -64,6 +64,6 @@ apptainer exec \
         ELAPSED_SEC=\$((END_TS - START_TS))
         echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Finished placement for \${DESIGN_NAME} idx=\${IDX} in \${ELAPSED_SEC}s\"
 
-        cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${HMSA_SOLUTION_EVAL_DIR}/\" || true
-        echo \"done. Outputs in: \${HMSA_SOLUTION_EVAL_DIR}\"
+        cp -r \"\${WORK}/results/\${DESIGN_NAME}\"/* \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\" || true
+        echo \"done. Outputs in: \${HMSA_SOLUTION_EVAL_DIR}/\${IDX}\"
     "
