@@ -329,7 +329,7 @@ def main() -> None:
     if args.output is not None:
         out_dir = args.output
     else:
-        out_dir = os.path.join(os.path.dirname(__file__), "regression_results", case_name)
+        out_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "regression_results", case_name)
     os.makedirs(out_dir, exist_ok=True)
     
     if not args.hmsa_results.exists():
