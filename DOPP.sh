@@ -116,69 +116,69 @@ apptainer exec \
       --output \"${REGRESSION_OUT_DIR}\"
   "
 
-# echo "[4/5] Extracting selected indices..."
-# ARRAY_SPEC="$(
-# python - <<'PY'
-# import numpy as np
-# from pathlib import Path
+echo "[4/5] Extracting selected indices..."
+ARRAY_SPEC="$(
+python - <<PY
+import numpy as np
+from pathlib import Path
 
-# dopt = Path("${REGRESSION_OUT_DIR}/d_optimal_results.npy")
-# if not dopt.exists():
-#     raise FileNotFoundError(f"D-opt result not found: {dopt}")
+dopt = Path("${REGRESSION_OUT_DIR}") / "d_optimal_results.npy"
+if not dopt.exists():
+    raise FileNotFoundError(f"D-opt result not found: {dopt}")
 
-# data = np.load(dopt, allow_pickle=True).item()
-# idx = data.get("selected_indices")
-# if idx is None:
-#     raise KeyError("selected_indices missing in d_optimal_results.npy")
+data = np.load(dopt, allow_pickle=True).item()
+idx = data.get("selected_indices")
+if idx is None:
+    raise KeyError("selected_indices missing in d_optimal_results.npy")
 
-# idx = sorted({int(x) for x in idx})
-# if not idx:
-#     raise ValueError("selected_indices is empty")
+idx = sorted({int(x) for x in idx})
+if not idx:
+    raise ValueError("selected_indices is empty")
 
-# print(",".join(map(str, idx)))
-# PY
-# )"
+print(",".join(map(str, idx)))
+PY
+)"
 
-# if [[ -z "${ARRAY_SPEC}" ]]; then
-#   echo "Error: selected indices are empty" >&2
-#   exit 1
-# fi
+if [[ -z "${ARRAY_SPEC}" ]]; then
+  echo "Error: selected indices are empty" >&2
+  exit 1
+fi
 
-# echo "Selected array indices: ${ARRAY_SPEC}"
+echo "Selected array indices: ${ARRAY_SPEC}"
 
-# echo '[4/5] Preparing and submitting dependent array jobs...'
-# DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
-# OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
+echo '[4/5] Preparing and submitting dependent array jobs...'
+DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
+OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
 
 
-# DP_SUBMIT_MSG="$(
-#   cd "${PLACE_DIR}" && \
-#   sbatch \
-#     --array="${ARRAY_SPEC}" \
-#     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}"\
-#     "${DP_TEMPLATE}"
-# )"
-# DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}')"
-# if [[ -z "${DP_JOB_ID}" ]]; then
-#   echo "Error: failed to parse placement job id from: ${DP_SUBMIT_MSG}" >&2
-#   exit 1
-# fi
+DP_SUBMIT_MSG="$(
+  cd "${PLACE_DIR}" && \
+  sbatch \
+    --array="${ARRAY_SPEC}" \
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}"\
+    "${DP_TEMPLATE}"
+)"
+DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}')"
+if [[ -z "${DP_JOB_ID}" ]]; then
+  echo "Error: failed to parse placement job id from: ${DP_SUBMIT_MSG}" >&2
+  exit 1
+fi
 
-# OR_SUBMIT_MSG="$(
-#   cd "${FLOW_DIR}" && \
-#   sbatch \
-#     --dependency=afterok:"${DP_JOB_ID}" \
-#     --array="${ARRAY_SPEC}" \
-#     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}" \
-#     "${OR_TEMPLATE}"
-# )"
-# OR_JOB_ID="$(echo "${OR_SUBMIT_MSG}" | awk '{print $4}')"
-# if [[ -z "${OR_JOB_ID}" ]]; then
-#   echo "Error: failed to parse OpenROAD job id from: ${OR_SUBMIT_MSG}" >&2
-#   exit 1
-# fi
-# echo "Submitted placement array job : ${DP_JOB_ID}"
-# echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (afterok:${DP_JOB_ID})"
+OR_SUBMIT_MSG="$(
+  cd "${FLOW_DIR}" && \
+  sbatch \
+    --dependency=afterok:"${DP_JOB_ID}" \
+    --array="${ARRAY_SPEC}" \
+    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}" \
+    "${OR_TEMPLATE}"
+)"
+OR_JOB_ID="$(echo "${OR_SUBMIT_MSG}" | awk '{print $4}')"
+if [[ -z "${OR_JOB_ID}" ]]; then
+  echo "Error: failed to parse OpenROAD job id from: ${OR_SUBMIT_MSG}" >&2
+  exit 1
+fi
+echo "Submitted placement array job : ${DP_JOB_ID}"
+echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (afterok:${DP_JOB_ID})"
 
 # apptainer exec \
 #   --bind "${PLACE_DIR}:/workspace" \
