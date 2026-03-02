@@ -96,10 +96,6 @@ apptainer exec \
   "${PLACE_DIR}/dreamplace.sif" \
   bash <<EOF
 set -euo pipefail
-cd "/workspace/build"
-cmake ..
-make -j 8
-make -j 8 install
 cd "/workspace/install"
 
 echo '[1/5] Running HMSA candidate generation in apptainer...'
