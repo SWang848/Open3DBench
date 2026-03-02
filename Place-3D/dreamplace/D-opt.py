@@ -410,7 +410,7 @@ def main() -> None:
     
     # Prepare output
     if args.output is not None:
-        output_path = args.output
+        output_path = os.path.join(args.output, "d_optimal_results.npy")
     else:
         output_path = os.path.join(args.features_file.parent, "d_optimal_results.npy")
     selected_candidates = [candidate_keys[i] for i in selected_indices]
