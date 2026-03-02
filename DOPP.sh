@@ -118,6 +118,7 @@ python dreamplace/D-opt.py \
 EOF
 
 echo "[4/5] Extracting selected indices..."
+pip install numpy
 ARRAY_SPEC="$(
 python - <<PY
 import numpy as np
