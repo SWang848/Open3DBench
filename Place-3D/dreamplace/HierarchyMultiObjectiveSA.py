@@ -717,9 +717,9 @@ def main() -> None:
     logging.info(f"Found {placedb.num_physical_nodes - placedb.num_terminal_NIs} positioned components")
     
     G = graph_construction(placedb)
-    nx.write_graphml(G, os.path.join(out_dir, "graph.graphml"))
+    # nx.write_graphml(G, os.path.join(out_dir, "graph.graphml"))
     hmsa = HMSA(G, placedb, case_name=case_name)
-    hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
+    # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
     pareto_archive = hmsa.run_annealing(
         hierarchy_aware_move=not args.disable_hierarchy_aware_move
