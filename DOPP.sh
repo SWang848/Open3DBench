@@ -170,7 +170,7 @@ fi
 OR_SUBMIT_MSG="$(
   cd "${FLOW_DIR}" && \
   sbatch \
-    --dependency=afterok:"${DP_JOB_ID}" \
+    --dependency=aftercorr:"${DP_JOB_ID}" \
     --array="${ARRAY_SPEC}" \
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
     "${OR_TEMPLATE}"
