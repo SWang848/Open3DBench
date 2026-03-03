@@ -15,6 +15,9 @@ CASE_NAME="${CASE_NAME}"
 DESIGN_NAME="${DESIGN_NAME}"
 IDX="${SLURM_ARRAY_TASK_ID}"
 HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR:-${SCRATCH}/HMSA_solution_eval/${CASE_NAME}_3D}"
+# global variables required for OpenROAD flow 
+DESIGN_DIMENSION="3D"
+DEF_VERSION=${CASE_NAME}
 
 module load apptainer
 
@@ -30,6 +33,8 @@ apptainer exec \
         FLOW_DIR=/workspace
         CASE_NAME='${CASE_NAME}'
         export DESIGN_NAME='${DESIGN_NAME}'
+        export DESIGN_DIMENSION='${DESIGN_DIMENSION}'
+        export DEF_VERSION='${DEF_VERSION}'
         IDX='${IDX}'
         # SLURM array job variables (for log file naming)
         # %A in output format = SLURM_ARRAY_JOB_ID (master job ID)

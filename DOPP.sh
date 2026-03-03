@@ -84,7 +84,7 @@ mkdir -p "${WORK}"
 DESIGN_3D="${DESIGN_NAME}_3D"
 HMSA_OUT_DIR="${WORK}/hmsa_results/"
 REGRESSION_OUT_DIR="${WORK}/regression_results/"
-HMSA_SOLUTION_EVAL_DIR="${SCRATCH}/HMSA_solution_eval/${DESIGN_NAME}_3D"
+HMSA_SOLUTION_EVAL_DIR="${WORK}/HMSA_solution_eval/${DESIGN_NAME}_3D"
 
 module load python
 module load apptainer
@@ -181,7 +181,7 @@ if [[ -z "${OR_JOB_ID}" ]]; then
   exit 1
 fi
 echo "Submitted placement array job : ${DP_JOB_ID}"
-echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (afterok:${DP_JOB_ID})"
+echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (aftercorr:${DP_JOB_ID})"
 
 # apptainer exec \
 #   --bind "${PLACE_DIR}:/workspace" \
