@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=dopp
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --mem=8G
 #SBATCH --output=/scratch/%u/dopp_logs/%x-%j.out
 #SBATCH --error=/scratch/%u/dopp_logs/%x-%j.err
 
