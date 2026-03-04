@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=dopp
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --output=/scratch/%u/dopp_logs/%x-%j.out
 #SBATCH --error=/scratch/%u/dopp_logs/%x-%j.err
@@ -90,58 +90,57 @@ module load python
 module load apptainer
 mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}" "${HMSA_SOLUTION_EVAL_DIR}"
 
-# apptainer exec \
-#   --bind "${PLACE_DIR}:/workspace" \
-#   --bind "${SCRATCH}:${SCRATCH}" \
-#   "${PLACE_DIR}/dreamplace.sif" \
-#   bash <<EOF
-# set -euo pipefail
-# cd "/workspace/install"
+apptainer exec \
+  --bind "${PLACE_DIR}:/workspace" \
+  --bind "${SCRATCH}:${SCRATCH}" \
+  "${PLACE_DIR}/dreamplace.sif" \
+  bash <<EOF
+set -euo pipefail
+cd "/workspace/install"
 
-# echo '[1/5] Running HMSA candidate generation in apptainer...'
-# python dreamplace/HierarchyMultiObjectiveSA.py \
-#   "test/or_3D/${DESIGN_3D}.json" \
-#   --output "${HMSA_OUT_DIR}" \
-#   --seed "${SEED}"
+echo '[1/5] Running HMSA candidate generation in apptainer...'
+python dreamplace/HierarchyMultiObjectiveSA.py \
+  "test/or_3D/${DESIGN_3D}.json" \
+  --output "${HMSA_OUT_DIR}" \
+  --seed "${SEED}"
 
-# echo '[2/5] Running feature construction in apptainer...'
-# python dreamplace/FeatureConstructionByManual.py \
-#   "test/or_3D/${DESIGN_3D}.json" \
-#   "${HMSA_OUT_DIR}/hmsa_results.json" \
-#   --output "${REGRESSION_OUT_DIR}"
+echo '[2/5] Running feature construction in apptainer...'
+python dreamplace/FeatureConstructionByManual.py \
+  "test/or_3D/${DESIGN_3D}.json" \
+  "${HMSA_OUT_DIR}/hmsa_results.json" \
+  --output "${REGRESSION_OUT_DIR}"
 
-# echo '[3/5] Running D-opt in apptainer...'
-# python dreamplace/D-opt.py \
-#   "${REGRESSION_OUT_DIR}/manual_features.npy" \
-#   --threshold "${THRESHOLD}" \
-#   --output "${REGRESSION_OUT_DIR}"
-# EOF
+echo '[3/5] Running D-opt in apptainer...'
+python dreamplace/D-opt.py \
+  "${REGRESSION_OUT_DIR}/manual_features.npy" \
+  --threshold "${THRESHOLD}" \
+  --output "${REGRESSION_OUT_DIR}"
+EOF
 
 echo "[4/5] Extracting selected indices..."
 pip install numpy
 pip install scipy
-ARRAY_SPEC=0
-# ARRAY_SPEC="$(
-# python - <<PY
-# import numpy as np
-# from pathlib import Path
+ARRAY_SPEC="$(
+python - <<PY
+import numpy as np
+from pathlib import Path
 
-# dopt = Path("${REGRESSION_OUT_DIR}") / "d_optimal_results.npy"
-# if not dopt.exists():
-#     raise FileNotFoundError(f"D-opt result not found: {dopt}")
+dopt = Path("${REGRESSION_OUT_DIR}") / "d_optimal_results.npy"
+if not dopt.exists():
+    raise FileNotFoundError(f"D-opt result not found: {dopt}")
 
-# data = np.load(dopt, allow_pickle=True).item()
-# idx = data.get("selected_indices")
-# if idx is None:
-#     raise KeyError("selected_indices missing in d_optimal_results.npy")
+data = np.load(dopt, allow_pickle=True).item()
+idx = data.get("selected_indices")
+if idx is None:
+    raise KeyError("selected_indices missing in d_optimal_results.npy")
 
-# idx = sorted({int(x) for x in idx})
-# if not idx:
-#     raise ValueError("selected_indices is empty")
+idx = sorted({int(x) for x in idx})
+if not idx:
+    raise ValueError("selected_indices is empty")
 
-# print(",".join(map(str, idx)))
-# PY
-# )"
+print(",".join(map(str, idx)))
+PY
+)"
 
 if [[ -z "${ARRAY_SPEC}" ]]; then
   echo "Error: selected indices are empty" >&2
@@ -172,7 +171,7 @@ OR_SUBMIT_MSG="$(
   cd "${FLOW_DIR}" && \
   sbatch \
     --dependency=aftercorr:"${DP_JOB_ID}" \
-    --array="${ARRAY_SPEC}" \
+    --array="${ARRAY_SPEC}" --cpus-per-task=8 --mem=16G \
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
     "${OR_TEMPLATE}"
 )"
