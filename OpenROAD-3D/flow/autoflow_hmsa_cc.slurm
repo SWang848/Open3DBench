@@ -24,7 +24,7 @@ module load apptainer
 # workspace is OpenROAD-3D/flow directory
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
-    --bind "${SCRATCH}:/scratch" \
+    --bind "${SCRATCH}:${SCRATCH}" \
     --bind "${SLURM_TMPDIR}:/tmp_slurm" \
     openroad.sif \
     bash -lc "
