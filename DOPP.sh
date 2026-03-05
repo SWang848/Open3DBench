@@ -153,11 +153,10 @@ echo '[4/5] Preparing and submitting dependent array jobs...'
 DP_TEMPLATE="${PLACE_DIR}/dp_hmsa_cc.slurm"
 OR_TEMPLATE="${FLOW_DIR}/autoflow_hmsa_cc.slurm"
 
-
 DP_SUBMIT_MSG="$(
   cd "${PLACE_DIR}" && \
   sbatch \
-    --array="${ARRAY_SPEC}" --cpus-per-task=4 --mem=8G \
+    --array="${ARRAY_SPEC}" --cpus-per-task=4 --mem=8G --time=1:00:00\
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}"\
     "${DP_TEMPLATE}"
 )"
@@ -170,8 +169,8 @@ fi
 OR_SUBMIT_MSG="$(
   cd "${FLOW_DIR}" && \
   sbatch \
-    --dependency=aftercorr:"${DP_JOB_ID}_%a" \
-    --array="${ARRAY_SPEC}" --cpus-per-task=8 --mem=16G \
+    --dependency=aftercorr:"${DP_JOB_ID}" \
+    --array="${ARRAY_SPEC}" --cpus-per-task=8 --mem=16G --time=2:00:00 \
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
     "${OR_TEMPLATE}"
 )"
