@@ -1,5 +1,6 @@
 import argparse
 import logging
+import math
 from pathlib import Path
 import os
 from typing import Tuple, Dict
@@ -265,7 +266,7 @@ def load_features_from_file(features_path: Path, fitness_csv: Path = None, featu
 
 def select_candidates_by_weights(
     weights: np.ndarray,
-    top_k: int = None,
+    top_k: float = None,
     threshold: float = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -282,9 +283,12 @@ def select_candidates_by_weights(
         are the selected weights renormalized to sum to 1
     """
     if top_k is not None:
-        # Select top K percentage candidates by weight
-        selected_indices = np.argsort(weights)[-int(top_k * len(weights)) :][::-1]
-        logging.info(f"Selected top {top_k * 100}% candidates by weight: {selected_indices}")
+        # Select top K percentage candidates by weight.
+        # Use ceil so that e.g. 1% of 81 → 1 candidate (not 0). Never use 0: arr[-0:] would mean "all".
+        k = max(1, math.ceil(top_k * len(weights)))
+        k = min(k, len(weights))
+        selected_indices = np.argsort(weights)[-k:][::-1]
+        logging.info(f"Selected top {top_k * 100}% candidates by weight ({k} of {len(weights)}): {selected_indices}")
     elif threshold is not None:
         # Select candidates above threshold
         selected_indices = np.where(weights >= threshold)[0]
