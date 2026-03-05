@@ -161,7 +161,7 @@ DP_SUBMIT_MSG="$(
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_3D}",HMSA_RESULTS_DIR="${HMSA_OUT_DIR}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}"\
     "${DP_TEMPLATE}"
 )"
-DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}')"
+DP_JOB_ID="$(echo "${DP_SUBMIT_MSG}" | awk '{print $4}' | cut -d'_' -f1)"
 if [[ -z "${DP_JOB_ID}" ]]; then
   echo "Error: failed to parse placement job id from: ${DP_SUBMIT_MSG}" >&2
   exit 1
@@ -170,7 +170,7 @@ fi
 OR_SUBMIT_MSG="$(
   cd "${FLOW_DIR}" && \
   sbatch \
-    --dependency=aftercorr:"${DP_JOB_ID}" \
+    --dependency=aftercorr:"${DP_JOB_ID}_%a" \
     --array="${ARRAY_SPEC}" --cpus-per-task=8 --mem=16G \
     --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
     "${OR_TEMPLATE}"
