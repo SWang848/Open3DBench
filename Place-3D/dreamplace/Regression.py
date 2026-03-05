@@ -221,8 +221,8 @@ def validate_model(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train linear regression model on manual features.")
-    parser.add_argument("features_file", dest="features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
-    parser.add_argument("fitness_csv", dest="fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
+    parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
     parser.add_argument("--output", type=Path, default=None, help="Path to save trained model")
