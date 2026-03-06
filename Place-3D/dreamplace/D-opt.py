@@ -284,8 +284,8 @@ def select_candidates_by_weights(
     """
     if top_k is not None:
         # Select top K percentage candidates by weight.
-        # Use ceil so that e.g. 1% of 81 → 1 candidate (not 0). Never use 0: arr[-0:] would mean "all".
-        k = max(1, math.ceil(top_k * len(weights)))
+        # Use at least 10 candidates.
+        k = max(10, math.ceil(top_k * len(weights)))
         k = min(k, len(weights))
         selected_indices = np.argsort(weights)[-k:][::-1]
         logging.info(f"Selected top {top_k * 100}% candidates by weight ({k} of {len(weights)}): {selected_indices}")
