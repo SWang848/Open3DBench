@@ -575,14 +575,27 @@ def cal_fitness_score(df, metrics):
 def parse_args():
     parser = argparse.ArgumentParser(description="Get PPA metrics from solution evaluation")
     parser.add_argument("dataset_name", type=str, help="Name of the dataset")
-    parser.add_argument("--dir_path", type=Path, default=os.path.join(os.path.dirname(__file__)), help="Path to the directory containing the dataset")
-    parser.add_argument("--plot_path", type=Path, default=os.path.join(os.path.dirname(__file__)), help="Path to the directory containing the plots")
+    parser.add_argument("--metrics_path", type=Path, default=None, help="Path to the directory containing the metrics")
+    parser.add_argument("--plot_path", type=Path, default=None, help="Path to the directory containing the plots")
     parser.add_argument("--metrics_to_normalize", type=list, default=["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"], help="Metrics to normalize")
-    return parser.parse_args()
+    parser.add_argument("--dir_path", type=Path, default=None, help="Path to the directory containing the dataset")
+    parser.add_argument("--plot", action="store_true", help="Whether to plot the Pareto front")
+    
+    args = parser.parse_args()
+    base = Path(os.path.dirname(__file__))
+    if args.metrics_path is None:
+        args.metrics_path = base / args.dataset_name
+    if args.plot_path is None:
+        args.plot_path = base / args.dataset_name
+    if args.dir_path is None:
+        args.dir_path = base / args.dataset_name
+    
+    return args
+
 
 def main():
     args = parse_args()
-    dir_path = os.path.join(args.dir_path, args.dataset_name)
+    dir_path = args.dir_path
     metric_dict = getMetrics(dir_path=dir_path)
     
     dataframes = []
@@ -629,17 +642,19 @@ def main():
     
     final_df, best_values = cal_fitness_score(final_df, metrics_to_normalize)
     print(best_values)
-    final_df.to_csv(f'{args.dataset_name}_final.csv', index=False)
 
-    plot_path = os.path.join(os.path.join(args.plot_path, args.dataset_name), "cutsize_imbalance.png")
-    plot_pareto_front(
-        final_df,
-        x_col="Cut_size",
-        y_col="Area_imbalance",
-        fitness_col="Fitness",
-        save_path=plot_path,
-        # max_points=20,
-    )
+    final_df.to_csv(args.metrics_path / "metrics.csv", index=False)
+
+    if args.plot:
+        plot_path = os.path.join(args.plot_path, "cutsize_imbalance.png")
+        plot_pareto_front(
+            final_df,
+            x_col="Cut_size",
+            y_col="Area_imbalance",
+            fitness_col="Fitness",
+            save_path=plot_path,
+            # max_points=20,
+        )
     
 
 if __name__ == "__main__":

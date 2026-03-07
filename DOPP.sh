@@ -193,6 +193,7 @@ done
 
 echo "All OpenROAD jobs: ${OR_JOB_IDS[*]}"
 
+
 # apptainer exec \
 #   --bind "${PLACE_DIR}:/workspace" \
 #   --bind "${SCRATCH}:/scratch" \
