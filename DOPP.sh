@@ -166,21 +166,32 @@ if [[ -z "${DP_JOB_ID}" ]]; then
   exit 1
 fi
 
-OR_SUBMIT_MSG="$(
-  cd "${FLOW_DIR}" && \
-  sbatch \
-    --dependency=aftercorr:"${DP_JOB_ID}" \
-    --array="${ARRAY_SPEC}" --cpus-per-task=8 --mem=16G --time=2:00:00 \
-    --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
-    "${OR_TEMPLATE}"
-)"
-OR_JOB_ID="$(echo "${OR_SUBMIT_MSG}" | awk '{print $4}')"
-if [[ -z "${OR_JOB_ID}" ]]; then
-  echo "Error: failed to parse OpenROAD job id from: ${OR_SUBMIT_MSG}" >&2
-  exit 1
-fi
 echo "Submitted placement array job : ${DP_JOB_ID}"
-echo "Submitted OpenROAD array job  : ${OR_JOB_ID} (aftercorr:${DP_JOB_ID})"
+
+# Submit one OpenROAD "single-element array" per selected index, depending on the matching placement element
+# Because there is a bug for using aftercorr: in OpenROAD array jobs
+OR_JOB_IDS=()
+for i in ${ARRAY_SPEC//,/ }; do
+  OR_JOB_ID="$(
+    cd "${FLOW_DIR}" && \
+    sbatch --parsable \
+      --dependency=afterok:${DP_JOB_ID}_${i} \
+      --array="${i}" --cpus-per-task=8 --mem=16G --time=2:00:00 \
+      --export=ALL,CASE_NAME="${DESIGN_NAME}",DESIGN_NAME="${DESIGN_NAME}",HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
+      "${OR_TEMPLATE}"
+  )"
+  OR_JOB_ID="${OR_JOB_ID%%;*}"
+
+  if [[ -z "${OR_JOB_ID}" ]]; then
+    echo "Error: failed to get OpenROAD job id for index ${i}" >&2
+    exit 1
+  fi
+
+  OR_JOB_IDS+=("${OR_JOB_ID}")
+  echo "Submitted OpenROAD job : ${OR_JOB_ID} (afterok:${DP_JOB_ID}_${i}, array=${i})"
+done
+
+echo "All OpenROAD jobs: ${OR_JOB_IDS[*]}"
 
 # apptainer exec \
 #   --bind "${PLACE_DIR}:/workspace" \
