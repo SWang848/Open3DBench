@@ -98,26 +98,26 @@ apptainer exec \
 set -euo pipefail
 cd "/workspace/install"
 
-echo '[1/5] Running HMSA candidate generation in apptainer...'
+echo '[1/6] Running HMSA candidate generation in apptainer...'
 python dreamplace/HierarchyMultiObjectiveSA.py \
   "test/or_3D/${DESIGN_3D}.json" \
   --output "${HMSA_OUT_DIR}" \
   --seed "${SEED}"
 
-echo '[2/5] Running feature construction in apptainer...'
+echo '[2/6] Running feature construction in apptainer...'
 python dreamplace/FeatureConstructionByManual.py \
   "test/or_3D/${DESIGN_3D}.json" \
   "${HMSA_OUT_DIR}/hmsa_results.json" \
   --output "${REGRESSION_OUT_DIR}"
 
-echo '[3/5] Running D-opt in apptainer...'
+echo '[3/6] Running D-opt in apptainer...'
 python dreamplace/D-opt.py \
   "${REGRESSION_OUT_DIR}/manual_features.npy" \
   --threshold "${THRESHOLD}" \
   --output "${REGRESSION_OUT_DIR}"
 EOF
 
-echo "[4/5] Extracting selected indices..."
+echo "[4/6] Extracting selected indices..."
 pip install numpy
 pip install scipy
 ARRAY_SPEC="$(
@@ -193,20 +193,94 @@ done
 
 echo "All OpenROAD jobs: ${OR_JOB_IDS[*]}"
 
+# Wait until all OpenROAD jobs are finished, or the only remaining ones are
+# stuck in PENDING with Reason=DependencyNeverSatisfied.
+echo "Waiting for OpenROAD jobs to finish (or become DependencyNeverSatisfied only)..."
+while true; do
+  any_active=0
+  any_non_dns_active=0
 
-# apptainer exec \
-#   --bind "${PLACE_DIR}:/workspace" \
-#   --bind "${SCRATCH}:/scratch" \
-#   "${PLACE_DIR}/dreamplace.sif" \
-#   bash -lc "
-#     set -euo pipefail
-#     cd /workspace/install
-#     echo '[5/5] Running weighted regression in apptainer...'
-#     python dreamplace/Regression.py \
-#       ${REGRESSION_OUT_DIR}/manual_features.npy \
-#       ${FITNESS_CSV} \
-#       --d-opt-results ${REGRESSION_OUT_DIR}/d_optimal_results.npy \
-#       --output ${REGRESSION_OUT_DIR}
-#   "
+  for jobid in "${OR_JOB_IDS[@]}"; do
+    # squeue prints nothing if the job is no longer pending/running
+    line="$(squeue -j "${jobid}" -h -o "%i %t %r" 2>/dev/null | head -n 1 || true)"
+    if [[ -z "${line}" ]]; then
+      # Job has finished (COMPLETED/FAILED/CANCELLED/etc.)
+      continue
+    fi
+
+    any_active=1
+    state="$(awk '{print $2}' <<< "${line}")"
+    # Reason may contain spaces; join fields 3..NF
+    reason="$(awk '{for (i=3; i<=NF; i++) printf (i==3 ? $i : " " $i)}' <<< "${line}")"
+
+    if [[ "${state}" == "PD" && "${reason}" == "DependencyNeverSatisfied" ]]; then
+      # This job is pending but can never run; do not count as non-DNS-active
+      continue
+    fi
+
+    # Any other pending/running state means we should keep waiting
+    any_non_dns_active=1
+  done
+
+  # Stop when:
+  #  - no jobs are active at all (all finished), OR
+  #  - the only remaining active jobs are DependencyNeverSatisfied.
+  if [[ "${any_active}" -eq 0 || "${any_non_dns_active}" -eq 0 ]]; then
+    echo "OpenROAD jobs reached terminal state (all finished or only DependencyNeverSatisfied remain)."
+    break
+  fi
+
+  echo "Still waiting on OpenROAD jobs (some pending/running not DependencyNeverSatisfied)..."
+  sleep 60
+done
+
+echo '[5/6] Running HMSA solution evaluation in apptainer...'
+cd "${WORK}"
+
+# unzip the openroad_logs.zip
+bash << EOF
+for dir in {0..389}; do
+    if [ ! -d "$dir" ]; then
+        continue
+    fi
+    
+    cd "$dir" || continue
+    
+    # Process openroad_logs.zip if it exists
+    if [ -f "openroad_logs.zip" ]; then
+        echo "Extracting $dir/openroad_logs.zip..."
+        mkdir -p openroad_logs && unzip -o -q ./openroad_logs.zip -d ./openroad_logs && rm -f ./openroad_logs.zip || echo "Failed: $dir/openroad_logs.zip"
+    fi
+    
+    # Process openroad_results.zip if it exists
+    if [ -f "openroad_results.zip" ]; then
+        echo "Extracting $dir/openroad_results.zip..."
+        mkdir -p openroad_results && unzip -o -q ./openroad_results.zip -d ./openroad_results && rm -f ./openroad_results.zip || echo "Failed: $dir/openroad_results.zip"
+    fi
+
+    cd ..
+done
+EOF
+cp ${HMSA_OUT_DIR}/hmsa_results.json ${HMSA_SOLUTION_EVAL_DIR}
+
+python ${REPO_ROOT}/HMSA_solution_eval/get_metrics.py \
+  --dataset_name "${DESIGN_3D}" \
+  --dir_path "${WORK}/${DESIGN_3D}" \
+  --metrics_path "${HMSA_SOLUTION_EVAL_DIR}" \
+
+apptainer exec \
+  --bind "${PLACE_DIR}:/workspace" \
+  --bind "${SCRATCH}:/scratch" \
+  "${PLACE_DIR}/dreamplace.sif" \
+  bash -lc "
+    set -euo pipefail
+    cd /workspace/install
+    echo '[6/6] Running weighted regression in apptainer...'
+    python dreamplace/Regression.py \
+      ${REGRESSION_OUT_DIR}/manual_features.npy \
+      ${HMSA_SOLUTION_EVAL_DIR}/metrics.csv \
+      --d-opt-results ${REGRESSION_OUT_DIR}/d_optimal_results.npy \
+      --output ${REGRESSION_OUT_DIR}
+  "
 
 
