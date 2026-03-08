@@ -2,7 +2,6 @@ from typing import Optional
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 import numpy as np
 import logging
 
@@ -16,27 +15,27 @@ _DEFAULT_LINE_COLORS = [
 
 def plot_cputime_vs_composite_cost_with_improvement(
     data_df: pd.DataFrame,
-    baseline_fitness: float,
     eval_times_col: str = "eval_times",
     composite_cost_col: str = "composite_cost",
     save_path: str = "./eval_times_vs_composite_cost_with_improvement.png",
-    plot_name: str = "Evaluation Times vs Composite Cost (with Relative Improvement)",
+    plot_name: str = "Evaluation Times vs Composite Cost",
     group_col: Optional[str] = None,
     x_label: str = "Evaluation Times",
+    y_label: str = "Composite Cost",
 ) -> None:
     """
-    Plot composite cost vs evaluation times with a right y-axis showing relative improvement (%).
-    Supports multiple lines when group_col is specified.
+    Plot composite cost vs evaluation times.
+    Supports multiple subplots when group_col is specified (one subplot per group).
 
     Args:
         data_df: DataFrame containing x-axis values and composite cost columns.
-        baseline_fitness: Baseline composite cost value.
         eval_times_col: Column name for evaluation times (x-axis).
         composite_cost_col: Column name for composite cost score.
         save_path: Destination path for the generated plot.
         plot_name: Figure title.
-        group_col: Optional column to group by; each unique value draws a separate line.
+        group_col: Optional column to group by; each unique value gets its own subplot.
         x_label: Label for the x-axis.
+        y_label: Label for the y-axis.
     """
     if data_df.empty:
         logging.warning("data_df is empty. Skipping evaluation times vs composite cost plot.")
@@ -60,10 +59,6 @@ def plot_cputime_vs_composite_cost_with_improvement(
         logging.warning("No valid evaluation times or composite cost values to plot.")
         return
 
-    plt.figure(figsize=(10, 6))
-    ax_left = plt.gca()
-    ax_right = ax_left.twinx()
-
     if group_col is None:
         groups = [(None, data.sort_values(eval_times_col).reset_index(drop=True))]
     else:
@@ -72,71 +67,75 @@ def plot_cputime_vs_composite_cost_with_improvement(
             for name, grp in data.groupby(group_col, sort=False)
         ]
 
-    all_costs = []
+    n_groups = len(groups)
+    n_rows, n_cols = 4, 2
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    axes_flat = axes.flatten()
+
+    for i in range(n_groups, n_rows * n_cols):
+        axes_flat[i].set_visible(False)
+
     for idx, (name, grp) in enumerate(groups):
+        ax = axes_flat[idx]
+
         x_vals = grp[eval_times_col].to_numpy(dtype=float)
         y_vals = grp[composite_cost_col].to_numpy(dtype=float)
-        all_costs.extend(y_vals.tolist())
         color = _DEFAULT_LINE_COLORS[idx % len(_DEFAULT_LINE_COLORS)]
-        label = name if name is not None else "Composite Cost"
-        ax_left.plot(
+        legend_label = name if name is not None else "Composite Cost"
+
+        ax.plot(
             x_vals,
             y_vals,
             color=color,
             marker="o",
-            linewidth=2,
-            markersize=6,
-            label=label,
+            linewidth=4,
+            markersize=12,
+            label=legend_label,
         )
-
-    ax_left.set_xlabel(x_label, fontsize=12, fontweight="bold")
-    ax_left.set_ylabel("Composite Cost", fontsize=12, fontweight="bold")
-    ax_right.set_ylabel("Relative Improvement (%)", fontsize=12, fontweight="bold")
-    ax_left.set_title(plot_name, fontsize=14, fontweight="bold")
-    ax_left.grid(True, alpha=0.3)
-
-    if all_costs:
-        y_min = float(np.min(all_costs))
-        y_max = float(np.max(all_costs))
-        pad = max((y_max - y_min) * 0.02, 1e-6)
-        ax_left.set_ylim(y_max + pad, y_min - pad)
-
-    if len(groups) > 1:
-        ax_left.legend(loc="best", fontsize=10)
-
-    ax_right.set_ylim(ax_left.get_ylim())
-    ax_right.yaxis.set_major_formatter(
-        FuncFormatter(
-            lambda val, _: f"{(baseline_fitness - val) / abs(baseline_fitness) * 100.0:.1f}"
-        )
-    )
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    logging.info("Evaluation times vs composite cost plot with relative improvement saved to '%s'", save_path)
-    plt.close()
+        x_min, x_max = float(np.min(x_vals)), float(np.max(x_vals))
+        y_min, y_max = float(np.min(y_vals)), float(np.max(y_vals))
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        x_pad = max(x_range * 0.002, 1e-6)
+        y_pad = max(y_range * 0.002, abs(np.mean(y_vals)) * 0.002, 0.001)
+        ax.set_xlim(x_min - x_pad, x_max + x_pad)
+        ax.set_ylim(y_min - y_pad, y_max + y_pad)
+        ax.legend(loc="best", fontsize=14)
+        ax.grid(True, alpha=0.3)
+    fig.supxlabel(x_label, fontsize=16, fontweight="bold")
+    fig.supylabel(y_label, fontsize=16, fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    logging.info("Evaluation times vs composite cost plot saved to '%s'", save_path)
+    plt.close(fig)
 
 
 if __name__ == "__main__":
-    design_name = "ariane136"
-    baseline = 1.9897829688926063
-
     df = pd.DataFrame({
-        "eval_times": [12, 34, 45, 67, 89] * 2,
+        "eval_times": [10, 13, 26, 52, 78, 104] + [10, 10, 16, 31, 46, 61] + [10, 13, 25, 50, 75, 100] \
+            + [10, 10, 10, 17, 25, 33] + [10, 10, 10, 13, 20, 26] + [10, 13, 26, 52, 77, 103]
+            + [10, 25, 50, 99, 148, 197] + [10, 14, 27, 53, 79, 106],
+    
         "composite_cost": [
-            1.8425, 1.8504, 1.8493, 1.8009, 1.8009,
-            1.8600, 1.8550, 1.8480, 1.8100, 1.8050,
+            1.7745, 1.7745, 1.7745, 1.7745, 1.7745, 1.7745,
+            1.9199, 1.9199, 1.8559, 1.8559, 1.8559, 1.8559,
+            1.5124, 1.5074, 1.5074, 1.5061, 1.4839, 1.4839,
+            1.6957, 1.6957, 1.6957, 1.6957, 1.6759, 1.6759,
+            1.6056, 1.6056, 1.6056, 1.6103, 1.6103, 1.6056,
+            1.8317, 1.8245, 1.8144, 1.8052, 1.8052, 1.8052,
+            1.7438, 1.7438, 1.7293, 1.7438, 1.7438, 1.7438,
+            1.4323, 1.3961, 1.3816, 1.3816, 1.3816, 1.3726
         ],
-        "method": ["A"] * 5 + ["B"] * 5,
+        "method": ["ariane133"] * 6 + ["ariane136"] * 6 + ["black_parrot"] * 6 \
+            + ["bp_be"] * 6 + ["bp_fe"] * 6 + ["bp_multi"] * 6 \
+            + ["bp_quad"] * 6 + ["bp"] * 6,
     })
     save_path = f"./eval_times_vs_composite_cost_with_improvement.png"
     plot_cputime_vs_composite_cost_with_improvement(
         df,
-        baseline_fitness=baseline,
         eval_times_col="eval_times",
         composite_cost_col="composite_cost",
         group_col="method",
         save_path=save_path,
-        plot_name="Evaluation Times vs Composite Cost (with Relative Improvement)",
-        x_label="Evaluation Times",
+        plot_name="Evaluation Times vs Composite Cost",
     )
