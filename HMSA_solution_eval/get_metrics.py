@@ -10,13 +10,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.ticker import ScalarFormatter
 
 
 def plot_pareto_front(
     final_df: pd.DataFrame,
     x_col: str = "Cut_size",
     y_col: str = "Area_imbalance",
-    fitness_col: str = "Fitness",
+    fitness_col: Optional[str] = "Fitness",
     save_path: str = "./pareto_front.png",
     max_points: Optional[int] = None,
 ) -> None:
@@ -27,16 +28,19 @@ def plot_pareto_front(
         final_df: DataFrame containing the columns used for axes and fitness scoring.
         x_col: Column name to use on the x-axis.
         y_col: Column name to use on the y-axis.
-        fitness_col: Column name representing fitness scores.
+        fitness_col: Optional column name representing fitness scores. If None, plot points only.
         save_path: Destination path for the generated plot.
-        max_points: Optionally limit the number of solutions plotted (sorted by ascending fitness).
+        max_points: Optionally limit the number of solutions plotted.
     """
 
     if final_df.empty:
         logging.warning("final_df is empty. Skipping Pareto plot generation.")
         return
 
-    required_cols = {"Idx", x_col, y_col, fitness_col}
+    required_cols = {"Idx", x_col, y_col}
+    use_fitness = fitness_col is not None
+    if use_fitness:
+        required_cols.add(fitness_col)
     if not required_cols.issubset(final_df.columns):
         missing = required_cols - set(final_df.columns)
         logging.warning(
@@ -50,59 +54,75 @@ def plot_pareto_front(
     data["Idx"] = pd.to_numeric(data["Idx"], errors="coerce")
     data[x_col] = pd.to_numeric(data[x_col], errors="coerce")
     data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
-    data[fitness_col] = pd.to_numeric(data[fitness_col], errors="coerce")
+    if use_fitness:
+        data[fitness_col] = pd.to_numeric(data[fitness_col], errors="coerce")
 
     plot_data = data.dropna(subset=["Idx", x_col, y_col])
     if plot_data.empty:
         logging.warning("No valid data points to plot in Pareto front.")
         return
 
-    plot_data = plot_data.sort_values(fitness_col, ascending=True, na_position='last').reset_index(drop=True)
+    if use_fitness:
+        plot_data = plot_data.sort_values(fitness_col, ascending=True, na_position='last').reset_index(drop=True)
+    else:
+        plot_data = plot_data.reset_index(drop=True)
     if max_points is not None and max_points > 0:
         plot_data = plot_data.head(max_points)
 
     x_values = plot_data[x_col].to_numpy(dtype=float)
     y_values = plot_data[y_col].to_numpy(dtype=float)
-    fitness = plot_data[fitness_col].to_numpy(dtype=float)
-
-    valid_mask = ~pd.isna(fitness)
-    x_valid = x_values[valid_mask]
-    y_valid = y_values[valid_mask]
-    fitness_valid = fitness[valid_mask]
 
     plt.figure(figsize=(10, 6))
-    
-    vmin = float(fitness_valid.min())
-    vmax = float(fitness_valid.max())
-    if np.isclose(vmin, vmax):
-        vmax = vmin + 1e-9
 
-    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    cmap = plt.get_cmap("coolwarm")
-    
-    scatter = plt.scatter(
-        x_valid,
-        y_valid,
-        c=fitness_valid,
-        cmap=cmap,
-        norm=norm,
-        s=110,
-        alpha=0.85,
-        edgecolors="black",
-        linewidths=0.8,
-    )
-    
-    # Plot NaN fitness points in gray
-    if not valid_mask.all():
+    scatter = None
+    if use_fitness:
+        fitness = plot_data[fitness_col].to_numpy(dtype=float)
+        valid_mask = ~pd.isna(fitness)
+        x_valid = x_values[valid_mask]
+        y_valid = y_values[valid_mask]
+        fitness_valid = fitness[valid_mask]
+
+        if fitness_valid.size > 0:
+            vmin = float(fitness_valid.min())
+            vmax = float(fitness_valid.max())
+            if np.isclose(vmin, vmax):
+                vmax = vmin + 1e-9
+
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            cmap = plt.get_cmap("coolwarm")
+            scatter = plt.scatter(
+                x_valid,
+                y_valid,
+                c=fitness_valid,
+                cmap=cmap,
+                norm=norm,
+                s=110,
+                alpha=0.85,
+                edgecolors="black",
+                linewidths=0.8,
+            )
+
+        if not valid_mask.all():
+            plt.scatter(
+                x_values[~valid_mask],
+                y_values[~valid_mask],
+                c="black",
+                s=110,
+                alpha=1.0,
+                edgecolors="black",
+                linewidths=0.8,
+                marker="o",
+            )
+    else:
         plt.scatter(
-            x_values[~valid_mask],
-            y_values[~valid_mask],
-            c="black",
+            x_values,
+            y_values,
+            c="#4C78A8",
             s=110,
-            alpha=1.0,           # pure dark black
+            alpha=0.85,
             edgecolors="black",
             linewidths=0.8,
-            marker="o",          # solid node
+            marker="o",
         )
 
     sorted_points = sorted(zip(x_values, y_values))
@@ -115,37 +135,44 @@ def plot_pareto_front(
 
     plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
     plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
-    plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
     plt.grid(True, alpha=0.3)
 
-    cbar = plt.colorbar(scatter)
-    cbar.set_label("Composite Cost", fontsize=11, fontweight="bold")
+    y_formatter = ScalarFormatter(useMathText=True)
+    y_formatter.set_scientific(True)
+    y_formatter.set_powerlimits((0, 0))
+    plt.gca().yaxis.set_major_formatter(y_formatter)
 
-    top_points = plot_data.head(20).reset_index(drop=True)
+    if scatter is not None:
+        cbar = plt.colorbar(scatter)
+        cbar.set_label("Composite Cost", fontsize=11, fontweight="bold")
+
     ax = plt.gca()
-    for rank, row in top_points.iterrows():
-        ax.annotate(
-            str(rank),
-            xy=(row[x_col], row[y_col]),
-            xytext=(0, 6),
-            textcoords="offset points",
-            fontsize=9,
-            fontweight="bold",
-            ha="center",
-            va="bottom",
-            color="black",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6, edgecolor="none"),
-        )
+    if use_fitness:
+        top_points = plot_data.head(20).reset_index(drop=True)
+        for rank, row in top_points.iterrows():
+            ax.annotate(
+                str(rank),
+                xy=(row[x_col], row[y_col]),
+                xytext=(0, 6),
+                textcoords="offset points",
+                fontsize=9,
+                fontweight="bold",
+                ha="center",
+                va="bottom",
+                color="black",
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.6, edgecolor="none"),
+            )
 
-    plt.text(
-        0.02,
-        0.98,
-        f"Points: {len(x_values)}",
-        transform=ax.transAxes,
-        fontsize=10,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.55),
-    )
+    # plt.text(
+    #     0.02,
+    #     0.98,
+    #     f"Candidates: {len(x_values)}",
+    #     transform=ax.transAxes,
+    #     fontsize=10,
+    #     verticalalignment="top",
+    #     bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.55),
+    # )
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -611,28 +638,30 @@ def main():
     
     final_df = pd.concat(dataframes, ignore_index=True)
     metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
-    # metrics_to_normalize = ["DRT_WL"]
+    # metrics_to_normalize = ["Congestion", "DRT_WL"]
+    # metrics_to_normalize = ["Final_WNS", "Final_TNS"]
+    # metrics_to_normalize = ["Power"]
     
     # Create baseline row with baseline performance values
     if args.dataset_name.startswith("ariane133"):
         baseline_performance = [0.12, 5624916.0, -1.25265, -2630.37, 0.358315]
-    if args.dataset_name.startswith("ariane136"):
+    elif args.dataset_name.startswith("ariane136"):
         baseline_performance = [0.1265, 5902171.0, -2.26936, -6122.3, 0.468656]
-    if args.dataset_name.startswith("swerv_wrapper"):
+    elif args.dataset_name.startswith("swerv_wrapper"):
         baseline_performance = [0.1862, 4112594.0, -1.14363, -957.915, 0.234985]
-    if args.dataset_name.startswith("bp"):
-        baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
-    if args.dataset_name.startswith("bp_be"):
-        baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
-    if args.dataset_name.startswith("bp_fe"):
-        baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
-    if args.dataset_name.startswith("bp_multi"):
-        baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
-    if args.dataset_name.startswith("bp_quad"):
+    elif args.dataset_name.startswith("bp_quad"):
         baseline_performance = [0.1373, 40373016.0, -1.71014, -26833.4, 1.82971]
+    elif args.dataset_name.startswith("bp_multi"):
+        baseline_performance = [0.1367, 3945693.0, -7.27241, -8975.67, 1.04488]
+    elif args.dataset_name.startswith("bp_be"):
+        baseline_performance = [0.173, 2414800.0, -0.809452, -93.0554, 0.144087]
+    elif args.dataset_name.startswith("bp_fe"):
+        baseline_performance = [0.1277, 1298018.0, -1.3136, -890.386, 0.282505]
+    elif args.dataset_name.startswith("bp"):
+        baseline_performance = [0.2017, 7780469.0, -5.84041, -3009.2, 0.374464]
     baseline_row = {col: None for col in final_df.columns}
     baseline_row['Idx'] = 'baseline'
-    for i, metric in enumerate(metrics_to_normalize):
+    for i, metric in enumerate(["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]):
         if metric in final_df.columns:
             baseline_row[metric] = baseline_performance[i]
     
@@ -652,6 +681,7 @@ def main():
             x_col="Cut_size",
             y_col="Area_imbalance",
             fitness_col="Fitness",
+            # fitness_col=None,
             save_path=plot_path,
             # max_points=20,
         )

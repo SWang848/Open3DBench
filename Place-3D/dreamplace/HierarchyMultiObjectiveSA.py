@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Union
 import networkx as nx
 import os
 import sys
@@ -10,6 +10,7 @@ import json
 import copy
 from itertools import combinations
 import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter
 import numpy as np
 import argparse
 from pathlib import Path
@@ -80,25 +81,41 @@ def graph_construction(db):
     return G
 
 def plot_pareto_front(
-    pareto_archive: Dict[Tuple[int, int], Tuple[Tuple[int, float], List[List[int]]]],
-    save_path: str,
+    pareto_archive: Optional[Dict[Any, Tuple[Tuple[int, float], List[List[int]]]]] = None,
+    save_path: str = "./pareto_front.png",
     x_col: str = "Cut_size",
     y_col: str = "Area_imbalance",
+    json_path: Optional[Union[str, Path]] = None,
 ) -> None:
     """
-    Plot the Pareto front using pareto_archive.
+    Plot the Pareto front using an in-memory archive or a saved JSON file.
 
     Args:
-        pareto_archive: Pareto archive dictionary with keys (cell_x, cell_y) and values (cost, solution)
+        pareto_archive: Pareto archive dictionary with arbitrary keys and values (cost, solution)
         save_path: Destination path for the generated plot.
         x_col: Label for the x-axis.
         y_col: Label for the y-axis.
+        json_path: Optional path to a saved HMSA results JSON file containing `pareto_archive`.
     """
+    if json_path is not None:
+        with open(json_path, "r") as fp:
+            results = json.load(fp)
+        solutions = results.get("pareto_archive", {}).get("solutions", {})
+        pareto_archive = {
+            key: (
+                (
+                    int(value.get("cost", [0, 0])[0]),
+                    float(value.get("cost", [0, 0])[1]),
+                ),
+                value.get("solution", [[], []]),
+            )
+            for key, value in solutions.items()
+        }
 
     if not pareto_archive:
         logging.warning("pareto_archive is empty. Skipping Pareto plot generation.")
         return
-    
+
     x_values = []
     y_values = []
     for key, value in pareto_archive.items():
@@ -110,12 +127,13 @@ def plot_pareto_front(
         logging.warning("No valid data points to plot in Pareto front.")
         return
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(9, 6))
     scatter = plt.scatter(
         x_values,
         y_values,
         s=110,
         alpha=0.85,
+        facecolors="none",
         edgecolors="black",
         linewidths=0.8,
     )
@@ -130,19 +148,23 @@ def plot_pareto_front(
 
     plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
     plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
-    plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
     plt.grid(True, alpha=0.3)
 
     ax = plt.gca()
-    plt.text(
-        0.02,
-        0.98,
-        f"Points: {len(x_values)}",
-        transform=ax.transAxes,
-        fontsize=10,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.55),
-    )
+    y_formatter = ScalarFormatter(useMathText=True)
+    y_formatter.set_scientific(True)
+    y_formatter.set_powerlimits((0, 0))
+    ax.yaxis.set_major_formatter(y_formatter)
+    # plt.text(
+    #     0.02,
+    #     0.98,
+    #     f"Candidates: {len(x_values)}",
+    #     transform=ax.transAxes,
+    #     fontsize=10,
+    #     verticalalignment="top",
+    #     bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.55),
+    # )
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -298,7 +320,14 @@ class HierarchyTree:
             print(f"\nError saving ASCII tree to '{save_path}': {e}")    
 
 class HMSA:
-    def __init__(self, G:nx.MultiGraph, placedb: PlaceDB, case_name: str, grid_size: int=40) -> None:
+    def __init__(
+        self,
+        G: nx.MultiGraph,
+        placedb: PlaceDB,
+        case_name: str,
+        grid_size: int = 40,
+        grid_based_multi_objective: bool = True,
+    ) -> None:
         self.G: nx.MultiGraph = G
         self.placedb: PlaceDB = placedb
         self.hierarchy_tree: HierarchyTree = HierarchyTree(placedb, case_name)
@@ -309,8 +338,9 @@ class HMSA:
         self.max_depth = max(self.nodes_by_level.keys())
         self.current_area_balance = [0.0, 0.0]
         self.current_solution = [[], []] # [bottom_die_macros_ids, upper_die_macros_ids]
-        self.pareto_archive_grid = {} # keys: (cell_x, cell_y), values: (cost, solution)
+        self.pareto_archive_grid = {} # keys: grid cells or cost tuples, values: (cost, solution)
         self.grid_size = grid_size
+        self.grid_based_multi_objective = grid_based_multi_objective
         self._initial_partition()
 
         self.current_total_cutsize = self._calculate_initial_cutsize()
@@ -417,7 +447,7 @@ class HMSA:
     
     def _update_norm_bounds(self, cut: int, imbalance: float) -> None:
         """
-        updates the bounds for the logarithmic costs and remaps archive if bounds changed
+        updates the bounds for the logarithmic costs used by the acceptance rule
         """
         log_cut = math.log1p(cut)
         log_imbalance = math.log1p(imbalance)
@@ -426,45 +456,87 @@ class HMSA:
         old_bounds_max_cut = self.norm_bounds['log_cut']['max']
         old_bounds_min_imbalance = self.norm_bounds['log_imbalance']['min']
         old_bounds_max_imbalance = self.norm_bounds['log_imbalance']['max']
-        
+
         self.norm_bounds['log_cut']['min'] = min(self.norm_bounds['log_cut']['min'], log_cut)
         self.norm_bounds['log_cut']['max'] = max(self.norm_bounds['log_cut']['max'], log_cut)
         self.norm_bounds['log_imbalance']['min'] = min(self.norm_bounds['log_imbalance']['min'], log_imbalance)
         self.norm_bounds['log_imbalance']['max'] = max(self.norm_bounds['log_imbalance']['max'], log_imbalance)
-        
-        # Only remap if bounds actually changed
+
         bounds_changed = (old_bounds_min_cut != self.norm_bounds['log_cut']['min'] or 
                          old_bounds_max_cut != self.norm_bounds['log_cut']['max'] or
                          old_bounds_min_imbalance != self.norm_bounds['log_imbalance']['min'] or
                          old_bounds_max_imbalance != self.norm_bounds['log_imbalance']['max'])
-        
-        if bounds_changed:
+
+        if self.grid_based_multi_objective and bounds_changed:
             self._remap_pareto_archive()
+        
+    @staticmethod
+    def _dominates(lhs: Tuple[int, float], rhs: Tuple[int, float]) -> bool:
+        return (
+            lhs[0] <= rhs[0]
+            and lhs[1] <= rhs[1]
+            and (lhs[0] < rhs[0] or lhs[1] < rhs[1])
+        )
+
+    @staticmethod
+    def _solution_signature(solution: List[List[int]]) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
+        return (
+            tuple(sorted(solution[BOTTOM_DIE])),
+            tuple(sorted(solution[UPPER_DIE])),
+        )
     
-    def _update_pareto_archive(self, cost: Tuple[int, float], solution: List[List[int]]) -> None:
+    def _update_grid_pareto_archive(self, cost: Tuple[int, float], solution: List[List[int]]) -> None:
         log_cut = math.log1p(cost[0])
         log_imbalance = math.log1p(cost[1])
-        
+
         min_log_cut = self.norm_bounds['log_cut']['min']
         max_log_cut = self.norm_bounds['log_cut']['max']
         min_log_imbalance = self.norm_bounds['log_imbalance']['min']
         max_log_imbalance = self.norm_bounds['log_imbalance']['max']
-        
+
         cut_range = max_log_cut - min_log_cut
         imbalance_range = max_log_imbalance - min_log_imbalance
-        
+
         cut_ratio = 0 if cut_range == 0 else (log_cut - min_log_cut) / (cut_range + 1e-9)
         imbalance_ratio = 0 if imbalance_range == 0 else (log_imbalance - min_log_imbalance) / (imbalance_range + 1e-9)
-        
-        cell_x = min(self.grid_size-1, int(cut_ratio * self.grid_size))
-        cell_y = min(self.grid_size-1, int(imbalance_ratio * self.grid_size))
+
+        cell_x = min(self.grid_size - 1, int(cut_ratio * self.grid_size))
+        cell_y = min(self.grid_size - 1, int(imbalance_ratio * self.grid_size))
         cell = (cell_x, cell_y)
         if cell in self.pareto_archive_grid:
             existing_cost, _ = self.pareto_archive_grid[cell]
             if cost[0] <= existing_cost[0] and cost[1] <= existing_cost[1]:
                 self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
-        else:  
+        else:
             self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
+
+    def _update_true_pareto_archive(self, cost: Tuple[int, float], solution: List[List[int]]) -> None:
+        candidate_signature = self._solution_signature(solution)
+        dominated_keys = []
+
+        for key, (existing_cost, existing_solution) in self.pareto_archive_grid.items():
+            if existing_cost == cost:
+                if self._solution_signature(existing_solution) == candidate_signature:
+                    return
+                dominated_keys.append(key)
+                continue
+
+            if self._dominates(existing_cost, cost):
+                return
+
+            if self._dominates(cost, existing_cost):
+                dominated_keys.append(key)
+
+        for key in dominated_keys:
+            del self.pareto_archive_grid[key]
+
+        self.pareto_archive_grid[cost] = (cost, copy.deepcopy(solution))
+
+    def _update_pareto_archive(self, cost: Tuple[int, float], solution: List[List[int]]) -> None:
+        if self.grid_based_multi_objective:
+            self._update_grid_pareto_archive(cost, solution)
+        else:
+            self._update_true_pareto_archive(cost, solution)
     
     def _remap_pareto_archive(self) -> None:
         old_archive_grid = list(self.pareto_archive_grid.values())
@@ -686,6 +758,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable hierarchy-aware level selection and use pure random (vanilla) macro moves.",
     )
+    parser.add_argument(
+        "--disable-grid-based-multi-objective",
+        action="store_true",
+        help="Disable grid-based archive binning and keep only the true Pareto front.",
+    )
     return parser.parse_args()
 
 def main() -> None:
@@ -718,7 +795,12 @@ def main() -> None:
     
     G = graph_construction(placedb)
     # nx.write_graphml(G, os.path.join(out_dir, "graph.graphml"))
-    hmsa = HMSA(G, placedb, case_name=case_name)
+    hmsa = HMSA(
+        G,
+        placedb,
+        case_name=case_name,
+        grid_based_multi_objective=not args.disable_grid_based_multi_objective,
+    )
     hmsa.hierarchy_tree.save_ascii_tree(os.path.join(out_dir, "hierarchy_tree.txt"))
     # hmsa.generate_regression_dataset(os.path.join(out_dir, "regression_dataset.json"))
     
