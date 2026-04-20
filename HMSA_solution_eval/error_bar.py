@@ -52,6 +52,7 @@ def plot_composite_cost_error_bars(
 
     plt.figure(figsize=(9, 6))
     colors = [point_color, "#F58518", "#54A24B", "#E45756", "#72B7B2", "#B279A2"]
+    markers = ["o", "s", "^", "D", "P", "X", "v", "*"]
     all_x_values = []
     all_lower_bounds = []
     all_upper_bounds = []
@@ -106,11 +107,12 @@ def plot_composite_cost_error_bars(
         all_upper_bounds.extend(upper.tolist())
 
         color = colors[idx % len(colors)]
+        marker = markers[idx % len(markers)]
         plt.errorbar(
             x_vals,
             centers,
             yerr=yerr,
-            fmt="o",
+            fmt=marker,
             linestyle="none",
             color=color,
             ecolor=color if error_color == point_color else error_color,
@@ -121,12 +123,13 @@ def plot_composite_cost_error_bars(
             label=series_name,
         )
 
-    plt.xlabel(x_label, fontsize=12, fontweight="bold")
-    plt.ylabel(y_label, fontsize=12, fontweight="bold")
+    plt.xlabel(x_label, fontsize=20, fontweight="bold")
+    plt.ylabel(y_label, fontsize=20, fontweight="bold")
     if plot_name:
-        plt.title(plot_name, fontsize=14, fontweight="bold")
+        plt.title(plot_name, fontsize=22, fontweight="bold")
     plt.grid(True, alpha=0.3)
     ax = plt.gca()
+    ax.tick_params(axis="both", labelsize=18)
     if all_x_values:
         x_min = min(all_x_values)
         x_max = max(all_x_values)
@@ -145,7 +148,7 @@ def plot_composite_cost_error_bars(
         filtered_ticks = [1] + filtered_ticks
     ax.set_xticks(sorted(set(filtered_ticks)))
     if len(named_data) > 1 or any(name != "Series" for name in named_data):
-        plt.legend()
+        plt.legend(fontsize=18)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     logging.info("Composite cost error bar plot saved to '%s'", save_path)

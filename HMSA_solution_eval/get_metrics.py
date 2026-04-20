@@ -133,9 +133,9 @@ def plot_pareto_front(
     def _format_label(col_name: str) -> str:
         return col_name.replace("_", " ").title()
 
-    plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
-    plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
-    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    plt.xlabel(_format_label(x_col), fontsize=20, fontweight="bold")
+    plt.ylabel(_format_label(y_col), fontsize=20, fontweight="bold")
+    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=22, fontweight="bold")
     plt.grid(True, alpha=0.3)
 
     y_formatter = ScalarFormatter(useMathText=True)
@@ -145,9 +145,11 @@ def plot_pareto_front(
 
     if scatter is not None:
         cbar = plt.colorbar(scatter)
-        cbar.set_label("Composite Cost", fontsize=11, fontweight="bold")
+        cbar.set_label("Composite Cost", fontsize=18, fontweight="bold")
+        cbar.ax.tick_params(labelsize=16)
 
     ax = plt.gca()
+    ax.tick_params(axis="both", labelsize=18)
     if use_fitness:
         top_points = plot_data.head(20).reset_index(drop=True)
         for rank, row in top_points.iterrows():
@@ -156,7 +158,7 @@ def plot_pareto_front(
                 xy=(row[x_col], row[y_col]),
                 xytext=(0, 6),
                 textcoords="offset points",
-                fontsize=9,
+                fontsize=13,
                 fontweight="bold",
                 ha="center",
                 va="bottom",

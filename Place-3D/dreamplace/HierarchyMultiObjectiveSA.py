@@ -146,12 +146,13 @@ def plot_pareto_front(
     def _format_label(col_name: str) -> str:
         return col_name.replace("_", " ").title()
 
-    plt.xlabel(_format_label(x_col), fontsize=12, fontweight="bold")
-    plt.ylabel(_format_label(y_col), fontsize=12, fontweight="bold")
-    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=14, fontweight="bold")
+    plt.xlabel(_format_label(x_col), fontsize=20, fontweight="bold")
+    plt.ylabel(_format_label(y_col), fontsize=20, fontweight="bold")
+    # plt.title(f"Pareto Archive: {_format_label(x_col)} vs {_format_label(y_col)}", fontsize=22, fontweight="bold")
     plt.grid(True, alpha=0.3)
 
     ax = plt.gca()
+    ax.tick_params(axis="both", labelsize=18)
     y_formatter = ScalarFormatter(useMathText=True)
     y_formatter.set_scientific(True)
     y_formatter.set_powerlimits((0, 0))
