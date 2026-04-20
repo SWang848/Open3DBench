@@ -771,7 +771,7 @@ def main() -> None:
     
     params = Params.Params()
     
-    case_name = args.params.stem
+    case_name = args.params.stem.replace("_3D", "")
     out_dir = args.output or (REPO_ROOT / "evaluation" / "candidates" / case_name)
     os.makedirs(out_dir, exist_ok=True)
     
