@@ -18,17 +18,14 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 import matplotlib.pyplot as plt
 import numpy as np
 
-from GraphConstruction import (
+from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
+from algorithms.dopp.graph_construction import (
     HierarchyEncoder,
     build_static_graph,
     graph_to_pyg_base,
     update_die_in_pyg,
 )
 from tqdm import tqdm
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-from dreamplace import Params, PlaceDB
 
 
 def set_seed(seed: int = 42) -> None:
@@ -42,8 +39,10 @@ def load_hmsa_results(results_path: Path) -> List[Tuple[List[List[int]], Tuple[f
     with open(results_path, "r") as fp:
         solutions = json.load(fp)
 
-    if not isinstance(solutions, list):
-        raise ValueError("Expected HMSA results file to contain a list of solution dicts.")
+    if isinstance(solutions, dict):
+        solutions = list(solutions.get("pareto_archive", {}).get("solutions", {}).values())
+    elif not isinstance(solutions, list):
+        raise ValueError("Expected HMSA results file to contain a list or pareto_archive dict.")
 
     dataset = []
     for entry in solutions:
@@ -310,7 +309,7 @@ def main() -> None:
     set_seed()
 
     case_name = args.params.stem
-    out_dir = Path("./regression_results") / case_name
+    out_dir = REPO_ROOT / "regression_results" / case_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = args.checkpoint_path or (out_dir / "regressor_best.pt")

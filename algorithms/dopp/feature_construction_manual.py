@@ -14,12 +14,8 @@ import numpy as np
 import scipy.linalg as la
 from sklearn.preprocessing import PolynomialFeatures
 
-from HMSA import graph_construction
-
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-from dreamplace import Params, PlaceDB
+from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
+from algorithms.dopp.hierarchy_multi_objective_sa import graph_construction
 
 
 def load_candidates_from_json(json_path: Path) -> List[Tuple[str, List[List[int]], Tuple[float, float]]]:
@@ -329,7 +325,7 @@ def main() -> None:
     if args.output is not None:
         out_dir = args.output
     else:
-        out_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "regression_results", case_name)
+        out_dir = REPO_ROOT / "regression_results" / case_name
     os.makedirs(out_dir, exist_ok=True)
     
     if not args.hmsa_results.exists():

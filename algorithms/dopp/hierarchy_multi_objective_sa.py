@@ -18,11 +18,7 @@ from sklearn.preprocessing import minmax_scale
 from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
 from scipy.spatial import distance
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-import PlaceDB
-import Params
+from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
 
 
 UPPER_DIE = 1
@@ -781,7 +777,7 @@ def main() -> None:
         out_dir = args.output
         os.makedirs(out_dir, exist_ok=True)
     else:
-        out_dir = f"./hmsa_results/{case_name}"
+        out_dir = REPO_ROOT / "hmsa_results" / case_name
         os.makedirs(out_dir, exist_ok=True)
     
     # load parameters

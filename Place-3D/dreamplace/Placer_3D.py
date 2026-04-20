@@ -16,8 +16,11 @@ import argparse
 import json
 # for consistency between python2 and python3
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+repo_root = os.path.dirname(root_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
+if repo_root not in sys.path:
+    sys.path.append(repo_root)
 import dreamplace.configure as configure
 import Params
 import PlaceDB
@@ -31,7 +34,7 @@ import random
 
 from Partitioner import partition
 from TPGNN import TPGNN
-from HMSA import graph_construction
+from algorithms.dopp.hierarchy_multi_objective_sa import graph_construction
 
 def seed_everything(seed=2022):
     random.seed(seed)

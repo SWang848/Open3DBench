@@ -12,6 +12,10 @@ The above two steps can be done sequentially or separately. Note that due to the
 
 Alternatively, to reproduce the PPA results, we provide 16 DEFs corresponding to the two 3D placement strategies in Table 3 of the paper for 8 designs. By deploying the corresponding version of OpenROAD as instructed below, you can perfectly reproduce the PPA results in the table.
 
+## Architecture Redesign
+
+The current repository layout grew around tool-specific scripts and shared file conventions. A clean target architecture that isolates the main algorithm from `Place-3D` and `OpenROAD` is documented in [`ARCHITECTURE_REDESIGN.md`](ARCHITECTURE_REDESIGN.md).
+
 ## 1. How to build
 
 ### 1.1 Build Place-3D

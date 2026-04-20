@@ -91,27 +91,28 @@ module load apptainer
 mkdir -p "${HMSA_OUT_DIR}" "${REGRESSION_OUT_DIR}" "${HMSA_SOLUTION_EVAL_DIR}"
 
 apptainer exec \
-  --bind "${PLACE_DIR}:/workspace" \
+  --bind "${REPO_ROOT}:/repo" \
   --bind "${SCRATCH}:${SCRATCH}" \
   "${PLACE_DIR}/dreamplace.sif" \
   bash <<EOF
 set -euo pipefail
-cd "/workspace/install"
+export PYTHONPATH="/repo:${PYTHONPATH:-}"
+cd "/repo"
 
 echo '[1/6] Running HMSA candidate generation in apptainer...'
-python dreamplace/HierarchyMultiObjectiveSA.py \
-  "test/or_3D/${DESIGN_3D}.json" \
+python -m algorithms.dopp.hierarchy_multi_objective_sa \
+  "Place-3D/install/test/or_3D/${DESIGN_3D}.json" \
   --output "${HMSA_OUT_DIR}" \
   --seed "${SEED}"
 
 echo '[2/6] Running feature construction in apptainer...'
-python dreamplace/FeatureConstructionByManual.py \
-  "test/or_3D/${DESIGN_3D}.json" \
+python -m algorithms.dopp.feature_construction_manual \
+  "Place-3D/install/test/or_3D/${DESIGN_3D}.json" \
   "${HMSA_OUT_DIR}/hmsa_results.json" \
   --output "${REGRESSION_OUT_DIR}"
 
 echo '[3/6] Running D-opt in apptainer...'
-python dreamplace/D-opt.py \
+python -m algorithms.dopp.d_opt \
   "${REGRESSION_OUT_DIR}/manual_features.npy" \
   --threshold "${THRESHOLD}" \
   --output "${REGRESSION_OUT_DIR}"
@@ -269,14 +270,15 @@ python ${REPO_ROOT}/HMSA_solution_eval/get_metrics.py \
   --metrics_path "${HMSA_SOLUTION_EVAL_DIR}" \
 
 apptainer exec \
-  --bind "${PLACE_DIR}:/workspace" \
+  --bind "${REPO_ROOT}:/repo" \
   --bind "${SCRATCH}:/scratch" \
   "${PLACE_DIR}/dreamplace.sif" \
   bash -lc "
     set -euo pipefail
-    cd /workspace/install
+    export PYTHONPATH="/repo:${PYTHONPATH:-}"
+    cd /repo
     echo '[6/6] Running weighted regression in apptainer...'
-    python dreamplace/Regression.py \
+    python -m algorithms.dopp.regression \
       ${REGRESSION_OUT_DIR}/manual_features.npy \
       ${HMSA_SOLUTION_EVAL_DIR}/metrics.csv \
       --d-opt-results ${REGRESSION_OUT_DIR}/d_optimal_results.npy \

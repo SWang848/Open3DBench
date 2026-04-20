@@ -16,18 +16,14 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, global_mean_pool
 import numpy as np
 
-from GraphConstruction import (
+from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
+from algorithms.dopp.graph_construction import (
     HierarchyEncoder,
     build_static_graph,
     graph_to_pyg_base,
     update_die_in_pyg,
 )
-from Regression import GraphRegressor, build_dataset
-
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-from dreamplace import Params, PlaceDB
+from algorithms.dopp.regression import GraphRegressor, build_dataset
 
 
 def load_candidates_from_json(json_path: Path) -> List[Tuple[str, List[List[int]], Tuple[float, float]]]:
@@ -219,7 +215,7 @@ def main() -> None:
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
     
     case_name = args.params.stem
-    out_dir = Path("./regression_results") / case_name
+    out_dir = REPO_ROOT / "regression_results" / case_name
     out_dir.mkdir(parents=True, exist_ok=True)
     
     checkpoint_path = args.checkpoint or (out_dir / "regressor_best.pt")

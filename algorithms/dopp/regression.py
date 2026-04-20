@@ -15,10 +15,7 @@ from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.model_selection import train_test_split
 
-# Import fitness score calculation from get_metrics
-root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-sys.path.append(os.path.join(root_dir, "HMSA_solution_eval"))
-from get_metrics import cal_fitness_score
+from evaluation.metrics.fitness import cal_fitness_score
 
 
 def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
