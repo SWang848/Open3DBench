@@ -309,7 +309,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract manual features for D-optimal design.")
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
     parser.add_argument("hmsa_results", type=Path, help="Path to hmsa_results.json containing candidates.")
-    parser.add_argument("--output", type=Path, default=None, help="Path to save extracted features. Default: regression_results/{case_name}/manual_features.npy")
+    parser.add_argument("--output", type=Path, help="Path to save extracted features. Default: evaluation/regression_results/{case_name}/manual_features.npy")
     parser.add_argument("--polynomial-features", action="store_true", help="Apply polynomial features")
     parser.add_argument("--polynomial-degree", type=int, default=2, help="Degree of polynomial features (default: 2)")
     parser.add_argument("--include-bias", action="store_true", help="Include bias (intercept) term in polynomial features")
@@ -325,7 +325,7 @@ def main() -> None:
     if args.output is not None:
         out_dir = args.output
     else:
-        out_dir = REPO_ROOT / "regression_results" / case_name
+        out_dir = REPO_ROOT / "evaluation" / "regression_results" / case_name
     os.makedirs(out_dir, exist_ok=True)
     
     if not args.hmsa_results.exists():

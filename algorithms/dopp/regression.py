@@ -222,7 +222,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
-    parser.add_argument("--output", type=Path, default=None, help="Path to save trained model")
+    parser.add_argument("--output", type=Path, default=None, help="Path to save trained model. Default: evaluation/regression_results/{case_name}/linear_regressor.pkl")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -313,7 +313,7 @@ def main() -> None:
     with open(output_path, "wb") as f:
         pickle.dump(model_data, f)
     
-    logging.info(f"Saved trained model to {output_path}")
+    logging.info(f"  Saved trained model to {output_path}")
     logging.info(f"  Model coefficients shape: {model.coef_.shape}")
     logging.info(f"  Model intercept: {model.intercept_:.4f}")
     

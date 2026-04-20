@@ -330,7 +330,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
                        help="Step size scheme (only used for Frank-Wolfe method)")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
-    parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results")
+    parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results. Default: evaluation/regression_results/{case_name}/d_optimal_results.npy")
     parser.add_argument("--top-k", type=float, default=None, help="Select top K percentage candidates by weight")
     parser.add_argument("--threshold", type=float, default=1e-6, help="Select candidates with weight >= threshold")
     parser.add_argument("--verbose", action="store_true", help="Verbose output during optimization")

@@ -747,9 +747,9 @@ class HMSA:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Hierarchy-aware Multi-Objective Simulated Annealing.")
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
-    parser.add_argument("--output", type=Path, default=None, help="Path to save HMSA results.")
+    parser.add_argument("--output", type=Path, default=None, help="Path to save HMSA results.Default: evaluation/candidates/{case_name}")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--seed",type=int,default=None,help="Optional RNG seed for deterministic runs.")
+    parser.add_argument("--seed", type=int, default=42, help="Optional RNG seed for deterministic runs.")
     parser.add_argument(
         "--disable-hierarchy-aware-move",
         action="store_true",
@@ -765,20 +765,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
-    if args.seed is not None:
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        logging.info("Using RNG seed %d", args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    logging.info("Using RNG seed %d", args.seed)
     
     params = Params.Params()
     
     case_name = args.params.stem
-    if args.output is not None:
-        out_dir = args.output
-        os.makedirs(out_dir, exist_ok=True)
-    else:
-        out_dir = REPO_ROOT / "hmsa_results" / case_name
-        os.makedirs(out_dir, exist_ok=True)
+    out_dir = args.output or (REPO_ROOT / "evaluation" / "candidates" / case_name)
+    os.makedirs(out_dir, exist_ok=True)
     
     # load parameters
     params.load(args.params)
@@ -824,7 +819,7 @@ def main() -> None:
     # Plot pareto front
     plot_pareto_front(pareto_archive, os.path.join(out_dir, "pareto_front.png"))
     # Save pareto_archive to a single file
-    results_path = os.path.join(out_dir, "hmsa_results.json")
+    results_path = os.path.join(out_dir, "candidates.json")
     results = {
         "pareto_archive": {
             "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
