@@ -20,7 +20,6 @@ from scipy.spatial.distance import cdist
 from scipy.spatial import distance
 from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
 
-
 UPPER_DIE = 1
 BOTTOM_DIE = 0
 
@@ -98,13 +97,16 @@ def plot_pareto_front(
             results = json.load(fp)
         solutions = results.get("pareto_archive", {}).get("solutions", {})
         pareto_archive = {
-            key: (
+            key: [
                 (
-                    int(value.get("cost", [0, 0])[0]),
-                    float(value.get("cost", [0, 0])[1]),
-                ),
-                value.get("solution", [[], []]),
-            )
+                    (
+                        int(entry.get("cost")[0]),
+                        float(entry.get("cost")[1]),
+                    ),
+                    entry.get("solution", [[], []]),
+                )
+                for entry in value
+            ]
             for key, value in solutions.items()
         }
 
@@ -114,10 +116,10 @@ def plot_pareto_front(
 
     x_values = []
     y_values = []
-    for key, value in pareto_archive.items():
-        cost, solution = value
-        x_values.append(cost[0])
-        y_values.append(cost[1])
+    for key, entries in pareto_archive.items():
+        for cost, solution in entries:
+            x_values.append(cost[0])
+            y_values.append(cost[1])
 
     if not x_values:
         logging.warning("No valid data points to plot in Pareto front.")
@@ -167,8 +169,6 @@ def plot_pareto_front(
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
     logging.info("Pareto Archive plot saved to '%s'", save_path)
     plt.close()
-        
-        
 class HierarchyNode:
     """
     Represents one node in the hierarchy (a cluster or a macro)
@@ -323,6 +323,7 @@ class HMSA:
         placedb: PlaceDB,
         case_name: str,
         grid_size: int = 40,
+        grid_cell_capacity: int = 3,
         grid_based_multi_objective: bool = True,
     ) -> None:
         self.G: nx.MultiGraph = G
@@ -337,6 +338,7 @@ class HMSA:
         self.current_solution = [[], []] # [bottom_die_macros_ids, upper_die_macros_ids]
         self.pareto_archive_grid = {} # keys: grid cells or cost tuples, values: (cost, solution)
         self.grid_size = grid_size
+        self.grid_cell_capacity = max(1, grid_cell_capacity)
         self.grid_based_multi_objective = grid_based_multi_objective
         self._initial_partition()
 
@@ -501,11 +503,12 @@ class HMSA:
         cell_y = min(self.grid_size - 1, int(imbalance_ratio * self.grid_size))
         cell = (cell_x, cell_y)
         if cell in self.pareto_archive_grid:
-            existing_cost, _ = self.pareto_archive_grid[cell]
-            if cost[0] <= existing_cost[0] and cost[1] <= existing_cost[1]:
-                self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
+            existing_entries = self.pareto_archive_grid[cell]
+            existing_entries.append((cost, copy.deepcopy(solution)))
+            if len(existing_entries) > self.grid_cell_capacity:
+                existing_entries.pop(0)
         else:
-            self.pareto_archive_grid[cell] = (cost, copy.deepcopy(solution))
+            self.pareto_archive_grid[cell] = [(cost, copy.deepcopy(solution))]
 
     def _update_true_pareto_archive(self, cost: Tuple[int, float], solution: List[List[int]]) -> None:
         candidate_signature = self._solution_signature(solution)
@@ -536,7 +539,9 @@ class HMSA:
             self._update_true_pareto_archive(cost, solution)
     
     def _remap_pareto_archive(self) -> None:
-        old_archive_grid = list(self.pareto_archive_grid.values())
+        old_archive_grid = []
+        for entries in self.pareto_archive_grid.values():
+            old_archive_grid.extend(entries)
         self.pareto_archive_grid = {}
         for cost, solution in old_archive_grid:
             self._update_pareto_archive(cost, solution)
@@ -760,6 +765,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable grid-based archive binning and keep only the true Pareto front.",
     )
+    parser.add_argument(
+        "--grid-cell-capacity",
+        type=int,
+        default=3,
+        help="Maximum number of solutions retained in each grid cell.",
+    )
+    parser.add_argument(
+        "--grid-size",
+        type=int,
+        default=40,
+        help="Number of bins per axis for the grid-based archive.",
+    )
     return parser.parse_args()
 
 def main() -> None:
@@ -791,6 +808,8 @@ def main() -> None:
         G,
         placedb,
         case_name=case_name,
+        grid_size=args.grid_size,
+        grid_cell_capacity=args.grid_cell_capacity,
         grid_based_multi_objective=not args.disable_grid_based_multi_objective,
     )
     hmsa.hierarchy_tree.save_ascii_tree(os.path.join(out_dir, "hierarchy_tree.txt"))
@@ -815,7 +834,7 @@ def main() -> None:
     
     # # Update archive and candidates after refinement
     pareto_archive = hmsa.pareto_archive_grid
-    print([(key, value[0]) for key, value in pareto_archive.items()])
+    print([(key, [entry[0] for entry in value]) for key, value in pareto_archive.items()])
     # Plot pareto front
     plot_pareto_front(pareto_archive, os.path.join(out_dir, "pareto_front.png"))
     # Save pareto_archive to a single file
@@ -823,7 +842,13 @@ def main() -> None:
     results = {
         "pareto_archive": {
             "description": "Complete Pareto archive containing all non-dominated solutions found during HMSA optimization",
-            "solutions": {str(key): {"cost": value[0], "solution": value[1]} for key, value in pareto_archive.items()}
+            "solutions": {
+                str(key): [
+                    {"cost": entry[0], "solution": entry[1]}
+                    for entry in value
+                ]
+                for key, value in pareto_archive.items()
+            }
         },
     }
     with open(results_path, 'w') as f:
