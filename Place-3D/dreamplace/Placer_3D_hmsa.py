@@ -375,7 +375,7 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='DREAMPlace 3D Placement with optional TPGNN or HMSA')
     parser.add_argument('json_file', type=str, help='Path to the JSON configuration file')
-    parser.add_argument('solution_index', type=int, help='Index of the solution to select from candidates')
+    parser.add_argument('solution_index', type=int, help='Flat index of the solution to select from candidates')
     parser.add_argument('--hmsa_results_dir', type=str, default=None, help='Path to HMSA results directory')
 
     args = parser.parse_args()
@@ -403,15 +403,28 @@ if __name__ == "__main__":
     params.placed_def_input = ""
     placedb(params)
     if args.hmsa_results_dir is None:
-        with open(f"./hmsa_results/{case_name}/hmsa_results.json", 'r') as f:
+        with open(f"./hmsa_results/{case_name}/candidates.json", 'r') as f:
             solutions = json.load(f)
     else:
-        with open(f"{args.hmsa_results_dir}/hmsa_results.json", 'r') as f:
+        with open(f"{args.hmsa_results_dir}/candidates.json", 'r') as f:
             solutions = json.load(f)
     
     candidates = solutions['pareto_archive']['solutions']
-    selected_key = list(candidates.keys())[args.solution_index]
-    selected_candidate = candidates[selected_key]
+    flattened_candidates = []
+    for cell_key, entries in candidates.items():
+        if isinstance(entries, list):
+            for entry in entries:
+                flattened_candidates.append((cell_key, entry))
+        else:
+            flattened_candidates.append((cell_key, entries))
+
+    if args.solution_index < 0 or args.solution_index >= len(flattened_candidates):
+        raise IndexError(
+            f"solution_index {args.solution_index} out of range for {len(flattened_candidates)} candidates"
+        )
+
+    selected_key, selected_candidate = flattened_candidates[args.solution_index]
+    logging.info("Selected candidate %d from cell %s", args.solution_index, selected_key)
     solution = selected_candidate['solution']
     upper_die_node_ids = solution[1]
     upper_die_names = []
