@@ -9,6 +9,7 @@
 
 set -euo pipefail
 mkdir -p "${SCRATCH}/dopp_logs"
+REPO_ROOT="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
 
 DESIGN_NAME="${DESIGN_NAME}"
 CASE_NAME="${CASE_NAME}"
@@ -34,11 +35,13 @@ module load apptainer
 # workspace is the `Place-3D` directory
 apptainer exec \
     --bind "${SLURM_SUBMIT_DIR}:/workspace" \
+    --bind "${REPO_ROOT}:/repo" \
     --bind "${SCRATCH}:${SCRATCH}" \
     --bind "${SLURM_TMPDIR}:/tmp_slurm" \
     dreamplace.sif \
     bash -lc "
         REPO=/workspace/install
+        export PYTHONPATH=\"/repo:\${PYTHONPATH:-}\"
         DESIGN_NAME=\"${DESIGN_NAME}\"
         CASE_NAME=\"${CASE_NAME}\"
         IDX=\"${IDX}\"
