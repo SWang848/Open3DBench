@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_cpu
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --array=0-1012%50
+#SBATCH --array=0-999%50
 #SBATCH --output=/scratch/%u/logs/%x-%A_%a.out
 #SBATCH --error=/scratch/%u/logs/%x-%A_%a.err
 
