@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=hmsa3d_cpu
-#SBATCH --time=5:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --array=0-999%50
@@ -80,13 +80,8 @@ apptainer exec \
             END_TS=\$(date +%s)
             ELAPSED_SEC=\$((END_TS - START_TS))
             echo \"[\$(date '+%Y-%m-%d %H:%M:%S')] Finished placement for \${DESIGN_NAME} global_idx=\${IDX} in \${ELAPSED_SEC}s\"
-
-            for result_path in \"\${WORK}/results/\${DESIGN_NAME}\"/*; do
-                [ -e \"\${result_path}\" ] || continue
-                result_name=\$(basename \"\${result_path}\")
-                [[ \"\${result_name}\" == *.gp.def ]] && continue
-                cp -r \"\${result_path}\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\" || true
-            done
+            
+            cp -r \"\${WORK}/results/\${DESIGN_NAME}/\"* \"\${HMSA_SOLUTION_EVAL_DIR}/\${IDX}/\" || true
             echo \"done. Outputs in: \${HMSA_SOLUTION_EVAL_DIR}/\${IDX}\"
         done
     "
