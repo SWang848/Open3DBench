@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+TOTAL_SOLUTIONS=10126
+BATCH_SIZE=10
+DESIGN_NAME=bp_multi_top
+CASE_NAME=bp_multi
+HMSA_SOLUTION_EVAL_DIR="${SCRATCH}/HMSA_solution_eval/${CASE_NAME}_3D"
+
+TOTAL_SOLUTIONS="${TOTAL_SOLUTIONS}" BATCH_SIZE="${BATCH_SIZE}" DESIGN_NAME="${DESIGN_NAME}" \
+CASE_NAME="${CASE_NAME}" START_IDX=0 HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
+sbatch --time=10:00:00 --cpus-per-task=8 --mem=16G --array=0-999%100 autoflow_hmsa_cc.slurm
+
+TOTAL_SOLUTIONS="${TOTAL_SOLUTIONS}" BATCH_SIZE="${BATCH_SIZE}" DESIGN_NAME="${DESIGN_NAME}" \
+CASE_NAME="${CASE_NAME}" START_IDX=10000 HMSA_SOLUTION_EVAL_DIR="${HMSA_SOLUTION_EVAL_DIR}" \
+sbatch --time=10:00:00 --cpus-per-task=8 --mem=16G --array=0-12%100 autoflow_hmsa_cc.slurm
+
