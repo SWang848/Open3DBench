@@ -15,7 +15,15 @@ def _resolve_dreamplace_path(path):
 class DreamPlaceLoader:
     """Load the DREAMPlace database and expose macro information lazily."""
 
-    def __init__(self, benchmark, upper_die_macros=None, def_path=None, rand_init=True):
+    def __init__(self, benchmark, partition_result=None, upper_die_names=None, def_path=None, rand_init=True):
+        """
+        Args:
+            benchmark: Benchmark name matching Place-3D/test/or_3D/<benchmark>_3D.json.
+            partition_result(Optional): list of node IDs to place in the bottom die (for shrinking).
+            upper_die_names(Optional): list of upper die macro names (for shrinking).
+            def_path(Optional): Path to DEF file (overrides default from JSON config).
+            rand_init(Optional): Whether to use random center initialization (overrides random_center_init_flag in dmp_json, default: True).
+        """
         self.benchmark = benchmark
         self.macros = None
         self.dmp_params = self._load_dmp_params(
@@ -26,7 +34,7 @@ class DreamPlaceLoader:
             self.dmp_params.def_input = os.path.abspath(def_path)
 
         self.dmp_placedb = PlaceDB.PlaceDB()
-        self.dmp_placedb(self.dmp_params, upper_die_macros=upper_die_macros)
+        self.dmp_placedb(self.dmp_params, partition_result=partition_result, upper_die_names=upper_die_names)
     
     def _load_dmp_params(self, rand_init=True):
         params = Params.Params()
