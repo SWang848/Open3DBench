@@ -27,16 +27,22 @@ def load_candidates_from_json(json_path: Path) -> List[Tuple[str, List[List[int]
         data = json.load(fp)
     
     candidates = []
-    for key, entry in data["pareto_archive"]["solutions"].items():
-        raw_solution = entry.get("solution", [[], []])
-        cost = entry.get("cost", [0.0, 0.0])
-        
-        lower_ids = [int(node_id) for node_id in raw_solution[0]]
-        upper_ids = [int(node_id) for node_id in raw_solution[1]]
-        cut_size = float(cost[0])
-        area_imbalance = float(cost[1])
-        
-        candidates.append((key, [lower_ids, upper_ids], (cut_size, area_imbalance)))
+    for key, entries in data["pareto_archive"]["solutions"].items():
+        if isinstance(entries, list):
+            iterable = [(f"{key}_{idx}", entry) for idx, entry in enumerate(entries)]
+        else:
+            iterable = [(str(key), entries)]
+
+        for candidate_key, entry in iterable:
+            raw_solution = entry.get("solution", [[], []])
+            cost = entry.get("cost", [0.0, 0.0])
+
+            lower_ids = [int(node_id) for node_id in raw_solution[0]]
+            upper_ids = [int(node_id) for node_id in raw_solution[1]]
+            cut_size = float(cost[0])
+            area_imbalance = float(cost[1])
+
+            candidates.append((candidate_key, [lower_ids, upper_ids], (cut_size, area_imbalance)))
     
     return candidates
 
@@ -309,7 +315,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract manual features for D-optimal design.")
     parser.add_argument("params", type=Path, help="Path to params JSON used by PlaceDB.")
     parser.add_argument("hmsa_results", type=Path, help="Path to hmsa_results.json containing candidates.")
-    parser.add_argument("--output", type=Path, help="Path to save extracted features. Default: evaluation/regression_results/{case_name}/manual_features.npy")
+    parser.add_argument("--output", type=Path, help="Path to save extracted features. Default: evaluation/regression_results/{case_name}")
     parser.add_argument("--polynomial-features", action="store_true", help="Apply polynomial features")
     parser.add_argument("--polynomial-degree", type=int, default=2, help="Degree of polynomial features (default: 2)")
     parser.add_argument("--include-bias", action="store_true", help="Include bias (intercept) term in polynomial features")

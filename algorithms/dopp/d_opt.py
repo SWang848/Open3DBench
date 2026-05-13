@@ -34,7 +34,8 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     w0 = np.ones(N) / N
 
     def info_matrix(w):
-        WX = np.diag(w) @ X            # shape (N, d)
+        # Scale rows directly to avoid forming a dense N x N diagonal matrix.
+        WX = w[:, None] * X            # shape (N, d)
         M = X.T @ WX
         M += epsilon * np.eye(d)
         return M
@@ -56,12 +57,9 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
         df/dw_i = -phi_i^T M^{-1} phi_i
         """
         M = info_matrix(w)
-        M_inv = np.linalg.inv(M)
-        XM_inv = X @ M_inv    
-        XM_invX = XM_inv @ X.T # shape (N, d)
-        # quad = np.sum(XM_inv * X, axis=1)  # phi_i^T M^{-1} phi_i
-        grad = np.array([XM_invX[i,i] for i in range(XM_invX.shape[0])])
-        return -1 * grad
+        Y = np.linalg.solve(M, X.T)   # shape (d, N)
+        grad = -np.sum(X * Y.T, axis=1)
+        return grad
 
     # Sum_i w_i = 1  (linear equality constraint)
     A = np.ones((1, N))
@@ -73,11 +71,16 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     result = minimize(
         fun,
         w0,
-        method="SLSQP",                 # or "trust-constr"
+        method="trust-constr",                 # or "trust-constr"
         jac=jac,
         constraints=[linear_constraint],
         bounds=bounds,
-        options={"maxiter": 500, "ftol": 1e-8, "disp": verbose},
+        options={
+            "maxiter": 500,
+            "gtol": 1e-8,
+            "xtol": 1e-8,
+            "verbose": 3 if verbose else 0,
+        },
     )
 
     w_opt = result.x
@@ -87,10 +90,10 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     # if s > 0:
     #     w_opt /= s
     M= info_matrix(w_opt)
-    M_inv = np.linalg.inv(M)
     # A_reg = M - epsilon * np.eye(M.shape[0])
     A_reg = M
-    q = np.array([X[i] @ np.linalg.solve(A_reg, X[i].T) for i in range(X.shape[0])])
+    Y = np.linalg.solve(A_reg, X.T)   # shape (d, N)
+    q = np.sum(X * Y.T, axis=1)
     g_star = np.max(q)
 
     if verbose:
@@ -101,15 +104,15 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     return w_opt, result
 
 
-def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verbose=False):
+def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=False):
     """
     Frank-Wolfe for D-optimal design (approximate design on simplex of size N).
 
     Args:
         X : np.ndarray, shape (N, d)
             Each row is a feature vector phi(x_i)^T.
-        max_iter : int
-            Maximum number of iterations.
+        tol : float
+            Stop when |g_star - d| <= tol, where g_star = max_i x_i^T M(w)^{-1} x_i.
         step_scheme : str
             "1/t" for gamma_t = 2/(t+2) or "line_search" (simple backtracking).
         epsilon : float
@@ -126,26 +129,25 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
     N, d = X.shape
     # Start with uniform design
     w = np.ones(N) / N
-    history = {"f": []}
+    history = {"f": [], "g_star": []}
 
-    def compute_M_and_inv(w):
-        # M = X^T diag(w) X
-        WX = np.diag(w) @ X            # shape (N, d)
+    def compute_M(w):
+        # M = X^T diag(w) X, computed without forming a dense N x N matrix.
+        WX = w[:, None] * X            # shape (N, d)
         M = X.T @ WX
         M += epsilon * np.eye(d)
-        M_inv = np.linalg.inv(M)
-        return M, M_inv
+        return M
 
-    for t in range(max_iter):
-        M, M_inv = compute_M_and_inv(w)
+    t = 0
+    while True:
+        M = compute_M(w)
 
         # Objective: f(w) = -log det(M)
         sign, logdet = np.linalg.slogdet(M)
         f = -logdet
         history["f"].append(f)
 
-        if verbose and (t % 20 == 0 or t == max_iter - 1):
-            print(f"[D-opt FW] iter={t}, f=-logdet={f:.4f}")
+
 
         # Gradient: grad_i = -phi_i^T M^{-1} phi_i
         # Compute v_i = phi_i^T M^{-1} phi_i efficiently:
@@ -157,7 +159,15 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
         # grad = np.array([XM_invX[i,i] for i in range(XM_invX.shape[0])])
         # quad = np.sum(XM_inv * X, axis=1)  # v_i
         grad = -1 * grad
-        
+        g_star = -np.min(grad)
+        history["g_star"].append(g_star)
+
+        if abs(g_star - d) <= tol:
+            break
+
+        if verbose and t % 20 == 0:
+            print(f"[D-opt FW] iter={t}, f=-logdet={f:.4f}, |(g_star - d)|={abs(g_star - d):.4f}")
+
         # s = linprog(grad, A_eq=np.ones((1,N)), b_eq=np.ones(1))
         # s=s.x
         # if t%100==0:
@@ -172,39 +182,43 @@ def frank_wolfe_d_optimal(X, max_iter=500, step_scheme="1/t", epsilon=1e-8, verb
 
         # Step size
         if step_scheme == "1/t":
-            gamma = 2.0 / (t + 2.0)
+            # Keep gamma < 1 so a strictly positive start remains in the interior.
+            trial_gamma = 2.0 / (t + 3.0)
         else:
-            # Simple backtracking line search (optional)
-            gamma = 1.0
-            f_current = f
-            for _ in range(10):
-                w_trial = (1 - gamma) * w + gamma * s
-                _, M_inv_trial = compute_M_and_inv(w_trial)
-                WX_trial = w_trial[:, None] * X
-                M_trial = X.T @ WX_trial + epsilon * np.eye(d)
-                sign_trial, logdet_trial = np.linalg.slogdet(M_trial)
-                f_trial = -logdet_trial
-                if f_trial <= f_current:
+            # Start from a full FW step and backtrack until the objective improves.
+            trial_gamma = 1.0
+
+        gamma = 0.0
+        f_next = f
+        w_next = w
+        for _ in range(50):
+            candidate_w = (1 - trial_gamma) * w + trial_gamma * s
+            M_trial = compute_M(candidate_w)
+            sign_trial, logdet_trial = np.linalg.slogdet(M_trial)
+            if sign_trial > 0:
+                candidate_f = -logdet_trial
+                if candidate_f <= f:
+                    gamma = trial_gamma
+                    f_next = candidate_f
+                    w_next = candidate_w
                     break
-                gamma *= 0.5
+            trial_gamma *= 0.5
+
+        improvement = f - f_next
+        if improvement <= 0:
+            break
 
         # Update
-        w = (1 - gamma) * w + gamma * s
+        w = w_next
+        t += 1
 
     # logging.info(f"det value:{np.exp(logdet_trial):.4f}")
-    W = np.diag(w)
-    A = X.T @ W @ X                      # (d, d)
+    A = compute_M(w)
 
     # Optional small regularization if A is ill-conditioned
-    eps = 1e-8
-    A_reg = A + eps * np.eye(A.shape[0])
-
-    # Solve A_reg @ Y = X.T  -> Y = A_reg^{-1} X.T
-    # Y = np.linalg.solve(A_reg, X.T)      # (d, N)
-
-    # # q[i] = x_i^T A^{-1} x_i
-    # q = np.sum(X.T * Y, axis=0)          # (N,)
-    q = np.array([X[i] @ np.linalg.solve(A_reg, X[i].T) for i in range(X.shape[0])])
+    A_reg = A if epsilon > 0 else A + 1e-8 * np.eye(A.shape[0])
+    Y = np.linalg.solve(A_reg, X.T)      # shape (d, N)
+    q = np.sum(X * Y.T, axis=1)
     g_star = np.max(q)
     logging.info(f"g_star value:{g_star:.4f}")
     
@@ -326,7 +340,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
                        help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
-    parser.add_argument("--max-iter", type=int, default=200, help="Maximum iterations for optimization algorithm")
+    parser.add_argument("--tol", type=float, default=1e-8, help="Tolerance for the stopping rule |g_star - d| <= tol")
     parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
                        help="Step size scheme (only used for Frank-Wolfe method)")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
@@ -371,7 +385,6 @@ def main() -> None:
     print(f"Feature matrix shape: {X.shape}")
     if args.method == "scipy":
         logging.info("Running scipy-based D-optimal design algorithm...")
-        logging.info(f"  Max iterations: {args.max_iter}")
         logging.info(f"  Epsilon: {args.epsilon}")
         
         w, history = scipy_d_optimal(
@@ -383,13 +396,13 @@ def main() -> None:
         logging.info(f"  scipy-based objective: {f_sci:.4f}")
     else:  # frank_wolfe
         logging.info("Running Frank-Wolfe D-optimal design algorithm...")
-        logging.info(f"  Max iterations: {args.max_iter}")
+        logging.info(f"  Tol: {args.tol}")
         logging.info(f"  Step scheme: {args.step_scheme}")
         logging.info(f"  Epsilon: {args.epsilon}")
         
         w, history = frank_wolfe_d_optimal(
             X,
-            max_iter=args.max_iter,
+            tol=args.tol,
             step_scheme=args.step_scheme,
             epsilon=args.epsilon,
             verbose=args.verbose,
@@ -429,7 +442,7 @@ def main() -> None:
         "metadata": metadata,
         "algorithm_params": {
             "method": args.method,
-            "max_iter": args.max_iter,
+            "tol": args.tol,
             "step_scheme": args.step_scheme,
             "epsilon": args.epsilon
         },

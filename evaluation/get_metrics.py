@@ -514,15 +514,31 @@ def find_reports_in_dirs(base_dir):
             solution_log = solution_root
     return report_files, placement_reports, solution_log
 
+def _flatten_solution_entries(solution_log):
+    solutions = solution_log.get("pareto_archive", {}).get("solutions", {})
+
+    flattened = []
+    for key, entries in solutions.items():
+        if isinstance(entries, list):
+            for entry_idx, entry in enumerate(entries):
+                if isinstance(entry, dict):
+                    flattened.append((f"{key}_{entry_idx}", entry))
+        elif isinstance(entries, dict):
+            flattened.append((str(key), entries))
+    return flattened
+
 def get_all_metric_json(report_files, placement_reports, solution_log):
     all_metric_json = {}
     solution_log = load_Json(solution_log)
+    flattened_solutions = _flatten_solution_entries(solution_log)
     
     for case_name_idx, report_file in report_files.items():
         placement_report = placement_reports.get(case_name_idx)
         solution_idx = case_name_idx.split("_")[-1]
-        key = list(solution_log["pareto_archive"]["solutions"].keys())[int(solution_idx)]
-        cost = solution_log["pareto_archive"]["solutions"][key]["cost"] 
+        solution_pos = int(solution_idx)
+
+        key, solution_entry = flattened_solutions[solution_pos]
+        cost = solution_entry["cost"]
         metric = get_Metric_in(report_file["report"], report_file["route"], report_file["place"],report_file["gp_route"], report_file["fp"], report_file["groute"], report_file["resize"], placement_report["upper"], placement_report["bottom"], cost, key)
         all_metric_json[solution_idx] = metric
 
@@ -611,7 +627,7 @@ def parse_args():
     parser.add_argument("--plot", action="store_true", help="Whether to plot the Pareto front")
     
     args = parser.parse_args()
-    base = Path(os.path.dirname(__file__))
+    base = Path(os.path.join(os.path.dirname(__file__), "candidates"))
     if args.metrics_path is None:
         args.metrics_path = base / args.dataset_name
     if args.plot_path is None:

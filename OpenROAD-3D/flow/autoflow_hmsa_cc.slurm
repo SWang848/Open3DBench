@@ -4,11 +4,10 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --array=0-999%100
-#SBATCH --output=logs/%x-%A_%a.out
-#SBATCH --error=logs/%x-%A_%a.err
+#SBATCH --output=/scratch/%u/logs/%x-%A_%a.out
+#SBATCH --error=/scratch/%u/logs/%x-%A_%a.err
 
 set -euo pipefail
-mkdir -p logs
 
 # Configuration (can be overridden via sbatch --export)
 CASE_NAME="${CASE_NAME}"
@@ -63,8 +62,8 @@ apptainer exec \
 
         copy_batch_logs() {
             local target_idx=\"\$1\"
-            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${target_idx}/\" || true
-            cp \"\${FLOW_DIR}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${target_idx}/\" || true
+            cp \"\${SCRATCH}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.out\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${target_idx}/\" || true
+            cp \"\${SCRATCH}/logs/openroad_hmsa_eval-\${SLURM_ARRAY_JOB_ID}_\${SLURM_ARRAY_TASK_ID}.err\" \"\${HMSA_SOLUTION_EVAL_DIR}/\${target_idx}/\" || true
         }
         
         # Function to copy logs on exit (success or failure)

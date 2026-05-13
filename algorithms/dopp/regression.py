@@ -15,7 +15,7 @@ from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.model_selection import train_test_split
 
-from evaluation.metrics.fitness import cal_fitness_score
+from evaluation.get_metrics import cal_fitness_score
 
 
 def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
