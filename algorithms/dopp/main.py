@@ -2,62 +2,8 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
 
-
-def _parse_upper_die_macros(raw_value: Optional[str]) -> Optional[List[str]]:
-    if raw_value is None:
-        return None
-    if not raw_value.strip():
-        return []
-    return [item.strip() for item in raw_value.split(",") if item.strip()]
-
-
-def _parse_partition_result(raw_value: Optional[str]) -> Optional[List[int]]:
-    if raw_value is None:
-        return None
-    if not raw_value.strip():
-        return []
-    return [int(item.strip()) for item in raw_value.split(",") if item.strip()]
-
-
-def _format_graph_node(graph_builder, graph_node_idx: int) -> dict:
-    if graph_node_idx == graph_builder.get_graph_cell_node_idx():
-        return {
-            "graph_node_idx": int(graph_node_idx),
-            "node_type": "cell",
-        }
-    return {
-        "graph_node_idx": int(graph_node_idx),
-        "node_type": "macro",
-        "placedb_macro_id": int(graph_builder.graph_macro_idx_to_placedb_macro_id(graph_node_idx)),
-    }
-
-
-def _get_top_heavy_edges(graph_builder, limit: int = 5) -> List[dict]:
-    if len(graph_builder.edge_weights) == 0:
-        return []
-
-    ranked_edge_indices = sorted(
-        range(len(graph_builder.edge_weights)),
-        key=lambda idx: float(graph_builder.edge_weights[idx]),
-        reverse=True,
-    )[:limit]
-
-    top_edges = []
-    for edge_rank, edge_idx in enumerate(ranked_edge_indices, start=1):
-        src_idx, dst_idx = graph_builder.edges[edge_idx]
-        top_edges.append(
-            {
-                "rank": edge_rank,
-                "weight": float(graph_builder.edge_weights[edge_idx]),
-                "endpoints": [
-                    _format_graph_node(graph_builder, int(src_idx)),
-                    _format_graph_node(graph_builder, int(dst_idx)),
-                ],
-            }
-        )
-    return top_edges
+from algorithms.dopp.utils import _parse_partition_result, _parse_upper_die_macros
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +13,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "benchmark",
         help="Benchmark name matching Place-3D/test/or_3D/<benchmark>_3D.json",
+    )
+    parser.add_argument(
+        "candidates_path",
+        type=Path,
+        help="Path to candidates.json for building a partition-updated graph sample.",
     )
     parser.add_argument(
         "--def-path",
@@ -86,6 +37,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Comma-separated placedb node IDs to place in the bottom die.",
     )
+
     parser.add_argument(
         "--scale-factor",
         type=float,
@@ -117,7 +69,11 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level.upper()))
     from algorithms.dopp.dmp_loader import DreamPlaceLoader
+    from algorithms.dopp.graph_diffused_feature_constructor import (
+        GraphDiffusedFeatureConstructor,
+    )
     from algorithms.dopp.graph_builder import GraphBuilder
+    from algorithms.dopp.partition_graph_updater import PartitionGraphUpdater
 
     upper_die_names = _parse_upper_die_macros(args.upper_die_macros)
     partition_result = _parse_partition_result(args.partition_result)
@@ -137,18 +93,65 @@ def main() -> None:
 
     graph_builder = GraphBuilder(partition_params=partition_params, dreamplace_loader=loader)
     area_info = graph_builder.get_area_info()
+    # plot_path = args.candidates_path.parent / f"{args.benchmark}_graph.png"
+    # fig, _ = plot_graph_structure(
+    #     graph_builder,
+    #     save_path=plot_path,
+    #     title=f"DOPP Graph: {args.benchmark}",
+    # )
+    # plt.close(fig)
+    # logging.info("Saved graph plot to %s", plot_path)
+
+    # summary = {
+    #     "benchmark": args.benchmark,
+    #     "num_macros": len(macros),
+    #     "num_graph_nodes": int(graph_builder.node_features.shape[0]),
+    #     "num_graph_edges": int(len(graph_builder.edge_weights)),
+    #     "node_feature_shape": list(graph_builder.node_features.shape),
+    #     "edge_feature_shape": [int(len(graph_builder.edge_weights)), 1],
+    #     "cell_area": float(area_info["cell_area"]),
+    #     "total_area": float(area_info["total_area"]),
+    # }
+
+    updater = PartitionGraphUpdater(
+        graph_builder=graph_builder,
+        candidates_path=args.candidates_path,
+    )
+    partition_node_features = updater.build_all_partition_features()
+
+    partition_feature_summary = None
+    if partition_node_features.shape[0] > 0:
+        diffused_feature_constructor = GraphDiffusedFeatureConstructor(
+            partition_node_features=partition_node_features,
+            edges=graph_builder.edges,
+            edge_weights=graph_builder.edge_weights,
+        )
+        diffused_partition_features = diffused_feature_constructor.build_flattened_features()
+        partition_feature_summary = {
+            "partition_feature_shape": list(partition_node_features.shape[1:]),
+            "all_partition_feature_shape": list(partition_node_features.shape),
+            "diffused_partition_feature_shape": list(diffused_partition_features.shape),
+            "partition_feature_names": [
+                "partition_label",
+                "incident_cut_net_count",
+                "flip_area_imbalance_gain",
+                "cross_tire_cell_conectivity",
+                "hierarchy_cohesion",
+            ],
+        }
 
     summary = {
         "benchmark": args.benchmark,
         "num_macros": len(macros),
         "num_graph_nodes": int(graph_builder.node_features.shape[0]),
         "num_graph_edges": int(len(graph_builder.edge_weights)),
-        "node_feature_shape": list(graph_builder.node_features.shape),
-        "edge_feature_shape": [int(len(graph_builder.edge_weights)), 1],
-        "top_5_heavy_edges": _get_top_heavy_edges(graph_builder, limit=5),
+        "static_node_feature_shape": list(graph_builder.node_features.shape),
         "cell_area": float(area_info["cell_area"]),
         "total_area": float(area_info["total_area"]),
+        "num_partition_samples": int(partition_node_features.shape[0]),
+        "partition_features": partition_feature_summary,
     }
+
     print(json.dumps(summary, indent=2))
 
 
