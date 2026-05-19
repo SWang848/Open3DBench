@@ -225,7 +225,17 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
     return w, history
 
 
-def load_features_from_file(features_path: Path, fitness_csv: Path = None, feature_type: str = "original") -> Tuple[np.ndarray, list, Dict]:
+def load_fitness_scores_from_csv(fitness_csv: Path) -> Dict[str, float]:
+    df = pd.read_csv(fitness_csv)
+    if "Fitness" not in df.columns:
+        raise ValueError("Fitness CSV must contain a 'Fitness' column for D-optimal filtering")
+    return {
+        str(row["Key"]): float(row["Fitness"])
+        for _, row in df.iterrows()
+    }
+
+
+def load_features_from_file(features_path: Path, fitness_csv: Path = None, feature_type: str = "features") -> Tuple[np.ndarray, list, Dict]:
     """
     Load features from the output of FeatureConstructionByManual.py.
     The fitness csv file is used to filter out candidates with NaN/inf fitness values.
@@ -241,17 +251,13 @@ def load_features_from_file(features_path: Path, fitness_csv: Path = None, featu
     """
 
     data = np.load(features_path, allow_pickle=True).item()
-    candidate_keys = data["candidate_keys"]
-    feature_matrix = data["features"]
+    candidate_keys = [str(key) for key in data["candidate_keys"]]
+    feature_matrix = np.asarray(data["features"], dtype=np.float32)
     feature_names = data.get("feature_names", [])
-    feature_dim = data.get("feature_dim", feature_matrix.shape[1])
+    feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
 
     if fitness_csv is not None:
-        df = pd.read_csv(fitness_csv)
-        fitness_dict = {}
-        for idx, row in df.iterrows():
-            key_val = str(row["Key"])
-            fitness_dict[key_val] = float(row["Fitness"])
+        fitness_dict = load_fitness_scores_from_csv(fitness_csv)
 
         valid_indices = []
         for i, key in enumerate(candidate_keys):
@@ -266,13 +272,16 @@ def load_features_from_file(features_path: Path, fitness_csv: Path = None, featu
             candidate_keys = [candidate_keys[i] for i in valid_indices]
             feature_matrix = feature_matrix[valid_indices]
 
-    logging.info(f"Using {feature_type} features: shape={feature_matrix.shape}")
+    bundle_feature_type = data.get("feature_type", feature_type)
+    logging.info(f"Using {bundle_feature_type} features: shape={feature_matrix.shape}")
     
     metadata = {
+        "feature_type": bundle_feature_type,
         "candidate_keys": candidate_keys,
         "feature_names": feature_names,
         "feature_dim": feature_dim,
         "num_candidates": len(candidate_keys),
+        "metadata": data.get("metadata", {}),
     }
     
     return feature_matrix, candidate_keys, metadata
@@ -335,7 +344,7 @@ def select_candidates_by_weights(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run D-optimal design on extracted features.")
-    parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser.add_argument("features_file", type=Path, help="Path to standardized feature bundle .npy file")
     parser.add_argument("--fitness-csv", type=Path, default=None, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
     parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
@@ -430,6 +439,7 @@ def main() -> None:
         output_path = os.path.join(args.output, "d_optimal_results.npy")
     else:
         output_path = os.path.join(args.features_file.parent, "d_optimal_results.npy")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     selected_candidates = [candidate_keys[i] for i in selected_indices]
 
     # breakpoint()

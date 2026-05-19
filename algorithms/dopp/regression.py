@@ -29,22 +29,23 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
         Tuple of (feature_matrix, candidate_keys, metadata)
     """
     data = np.load(features_path, allow_pickle=True).item()
-    
-    candidate_keys = data["candidate_keys"]
-    
-    feature_matrix = data["features"]
+    candidate_keys = [str(key) for key in data["candidate_keys"]]
+    feature_matrix = np.asarray(data["features"], dtype=np.float32)
     feature_names = data.get("feature_names", [])
-    feature_dim = data.get("feature_dim", feature_matrix.shape[1])
-    
-    logging.info(f"Loaded manual features: shape={feature_matrix.shape}")
+    feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
+    feature_type = data.get("feature_type", "features")
+
+    logging.info(f"Loaded {feature_type}: shape={feature_matrix.shape}")
     logging.info(f"  Number of candidates: {len(candidate_keys)}")
     logging.info(f"  Feature dimension: {feature_dim}")
     
     metadata = {
+        "feature_type": feature_type,
         "candidate_keys": candidate_keys,
         "feature_names": feature_names,
         "feature_dim": feature_dim,
         "num_candidates": len(candidate_keys),
+        "metadata": data.get("metadata", {}),
     }
     
     return feature_matrix, candidate_keys, metadata
@@ -88,9 +89,9 @@ def load_fitness_scores_from_csv(
         raise ValueError("CSV file does not contain 'Fitness' column and no metrics provided for calculation")
 
 
-def load_d_optimal_weights(
+def load_d_optimal_selection(
     d_opt_results_path: Path,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, List[str]]:
     """
     Load D-optimal design weights and selected candidate keys from results file.
     Only loads candidates with non-zero weights (selected_candidates).
@@ -106,10 +107,10 @@ def load_d_optimal_weights(
     """
     data = np.load(d_opt_results_path, allow_pickle=True).item()
     
-    selected_weights = data["normalized_weights"]  # selected weights renormalized to sum to 1
-    selected_indices = data["selected_indices"]
-    
-    return selected_weights, selected_indices
+    selected_weights = np.asarray(data["normalized_weights"], dtype=np.float32)
+    candidate_keys = [str(key) for key in data["candidate_keys"]]
+    selected_candidate_keys = [candidate_keys[int(idx)] for idx in data["selected_indices"]]
+    return selected_weights, selected_candidate_keys
 
 
 def train_linear_regression(
@@ -177,48 +178,33 @@ def train_linear_regression(
     return model, metrics
 
 
-def validate_model(
-    model: LinearRegression,
-    X_val: np.ndarray,
-    y_val: np.ndarray,
-) -> Dict:
-    """
-    Validate a trained model on validation data.
-    
-    Args:
-        model: Trained LinearRegression model
-        X_val: Validation feature matrix (N_val, d)
-        y_val: Validation target values (N_val,)
-    
-    Returns:
-        Dictionary with validation metrics
-    """
-    logging.info(f"Validating on {X_val.shape[0]} samples")
-    
-    # Predict on validation data
-    y_val_pred = model.predict(X_val)
-    
-    val_mse = mean_squared_error(y_val, y_val_pred)
-    val_rmse = np.sqrt(val_mse)
-    val_mae = mean_absolute_error(y_val, y_val_pred)
-    val_r2 = r2_score(y_val, y_val_pred)
-    
-    metrics = {
-        "val_mse": val_mse,
-        "val_rmse": val_rmse,
-        "val_mae": val_mae,
-        "val_r2": val_r2,
-    }
-    
-    logging.info("Model evaluation on validation data:")
-    logging.info(f"  Validation RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}")
-    
-    return metrics
+def select_training_data_from_d_optimal(
+    X: np.ndarray,
+    y: np.ndarray,
+    candidate_keys: List[str],
+    selected_candidate_keys: List[str],
+    selected_weights: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str]]:
+    key_to_index = {key: idx for idx, key in enumerate(candidate_keys)}
+    missing_keys = [key for key in selected_candidate_keys if key not in key_to_index]
+    if missing_keys:
+        raise ValueError(
+            "D-optimal selected keys are missing from regression feature/fitness data: "
+            f"{missing_keys[:10]}"
+        )
+
+    selected_indices = [key_to_index[key] for key in selected_candidate_keys]
+    return (
+        X[selected_indices],
+        y[selected_indices],
+        np.asarray(selected_weights, dtype=np.float32),
+        selected_candidate_keys,
+    )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train linear regression model on manual features.")
-    parser.add_argument("features_file", type=Path, help="Path to features .npy file from FeatureConstructionByManual.py")
+    parser = argparse.ArgumentParser(description="Train linear regression model from a feature bundle.")
+    parser.add_argument("features_file", type=Path, help="Path to standardized feature bundle .npy file")
     parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
@@ -270,15 +256,18 @@ def main() -> None:
     d_opt_candidate_keys = []
     if args.d_opt_results and args.d_opt_results.exists():
         logging.info(f"Loading D-optimal weights from {args.d_opt_results}...")
-        selected_weights, selected_indices = load_d_optimal_weights(args.d_opt_results)
-        d_opt_candidate_keys = [candidate_keys[i] for i in selected_indices]
-        
-        X_matched = X[selected_indices]
-        y_matched = np.array([fitness_dict[key] for key in d_opt_candidate_keys])
+        selected_weights, selected_candidate_keys = load_d_optimal_selection(args.d_opt_results)
+        y_all = np.array([fitness_dict[key] for key in candidate_keys], dtype=np.float32)
+        X_matched, y_matched, d_opt_weights, d_opt_candidate_keys = select_training_data_from_d_optimal(
+            X,
+            y_all,
+            candidate_keys,
+            selected_candidate_keys,
+            selected_weights,
+        )
         best_fitness = y_matched.min()
         best_candidate_key = d_opt_candidate_keys[y_matched.argmin()]
         logging.info(f"Best fitness score found in D-optimal design: {best_fitness:.4f} for candidate {best_candidate_key}")
-        d_opt_weights = selected_weights
     else:
         logging.info("No D-optimal weights provided, using uniform weights (standard regression)")
         X_matched = X[[i for i, key in enumerate(candidate_keys)]]
@@ -305,10 +294,12 @@ def main() -> None:
         "candidate_keys": candidate_keys,
         "feature_names": metadata["feature_names"],
         "feature_dim": X_matched.shape[1],
+        "feature_type": metadata.get("feature_type"),
         "used_weighted_regression": d_opt_weights is not None,
     }
     if args.d_opt_results and args.d_opt_results.exists():
         model_data["sample_weights"] = d_opt_weights
+        model_data["d_opt_candidate_keys"] = d_opt_candidate_keys
 
     with open(output_path, "wb") as f:
         pickle.dump(model_data, f)
@@ -388,8 +379,7 @@ def main() -> None:
     top_10_coverage_coreset = []
     top_10_coverage_prediction = []
     if args.d_opt_results and args.d_opt_results.exists():
-        coreset_keys = [candidate_keys[i] for i in selected_indices]
-        for key in coreset_keys:
+        for key in d_opt_candidate_keys:
             if key in top_k_true_keys:
                 rank = top_k_true_keys.index(key) + 1
                 top_10_coverage_coreset.append(rank)

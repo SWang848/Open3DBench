@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -88,32 +89,26 @@ class GraphDiffusedFeatureConstructor:
 
     def build_flattened_features(self, max_hop: int = 2) -> np.ndarray:
         """
-        Concatenate hop features per node.
+        Concatenate hop features and flatten node features per candidate.
 
-        Returns ``[n_nodes, (max_hop + 1) * d]`` for one candidate or
-        ``[n_candidates, n_nodes, (max_hop + 1) * d]`` for a batch.
+        Returns ``[n_nodes * (max_hop + 1) * d]`` for one candidate or
+        ``[n_candidates, n_nodes * (max_hop + 1) * d]`` for a batch.
         """
-        return np.concatenate(
+        flattened_features = np.concatenate(
             self.build_hop_features(max_hop=max_hop),
             axis=-1,
-        ).astype(
-            np.float32,
-            copy=False,
         )
+        if flattened_features.ndim == 2:
+            reshaped_features = flattened_features.reshape(-1)
+        else:
+            reshaped_features = flattened_features.reshape(flattened_features.shape[0], -1)
+        return reshaped_features.astype(np.float32, copy=False)
 
     def build_graph_feature_vector(self, max_hop: int = 2) -> np.ndarray:
         """
         Flatten all node-level diffused features into one graph-level vector.
         """
-        flattened_features = self.build_flattened_features(max_hop=max_hop)
-        if flattened_features.ndim == 2:
-            reshaped_features = flattened_features.reshape(-1)
-        else:
-            reshaped_features = flattened_features.reshape(flattened_features.shape[0], -1)
-        return reshaped_features.astype(
-            np.float32,
-            copy=False,
-        )
+        return self.build_flattened_features(max_hop=max_hop)
 
     @staticmethod
     def _validate_partition_node_features(
@@ -173,3 +168,85 @@ class GraphDiffusedFeatureConstructor:
             raise ValueError(
                 f"edges contain node indices outside valid range [0, {n_nodes - 1}]"
             )
+
+
+def build_graph_diffused_feature_bundle(
+    benchmark: str,
+    candidates_path: Path,
+    max_hop: int = 2,
+    def_path: Optional[Path] = None,
+    upper_die_macros: Optional[str] = None,
+    partition_result: Optional[str] = None,
+    scale_factor: float = 1.0,
+    top_k_ratio: float = 0.3,
+    rand_init: bool = False,
+    self_loop_weight: float = 1.0,
+) -> Dict:
+    """
+    Build a standardized graph-diffused feature bundle.
+
+    Returns a dictionary with the same top-level keys as manual feature
+    construction so downstream D-optimal and regression code can share one
+    loading path.
+    """
+    from algorithms.dopp.dmp_loader import DreamPlaceLoader
+    from algorithms.dopp.feature_construction_manual import load_candidates_from_json
+    from algorithms.dopp.graph_builder import GraphBuilder
+    from algorithms.dopp.partition_graph_updater import PartitionGraphUpdater
+    from algorithms.dopp.utils import _parse_partition_result, _parse_upper_die_macros
+
+    candidates = load_candidates_from_json(candidates_path)
+    candidate_keys = [key for key, _, _ in candidates]
+    if not candidate_keys:
+        raise ValueError("No candidates found in candidates JSON.")
+
+    partition_params = {
+        "scale_factor": scale_factor,
+        "top_k_ratio": top_k_ratio,
+    }
+    loader = DreamPlaceLoader(
+        benchmark=benchmark,
+        upper_die_names=_parse_upper_die_macros(upper_die_macros),
+        partition_result=_parse_partition_result(partition_result),
+        def_path=str(def_path) if def_path is not None else None,
+        rand_init=rand_init,
+    )
+    graph_builder = GraphBuilder(
+        partition_params=partition_params,
+        dreamplace_loader=loader,
+    )
+    updater = PartitionGraphUpdater(
+        graph_builder=graph_builder,
+        candidates_path=candidates_path,
+    )
+    partition_node_features = updater.build_all_partition_features()
+    if partition_node_features.shape[0] != len(candidate_keys):
+        raise ValueError(
+            "Candidate key count does not match partition feature rows: "
+            f"{len(candidate_keys)} != {partition_node_features.shape[0]}"
+        )
+
+    constructor = GraphDiffusedFeatureConstructor(
+        partition_node_features=partition_node_features,
+        edges=graph_builder.edges,
+        edge_weights=graph_builder.edge_weights,
+        self_loop_weight=self_loop_weight,
+    )
+    features = constructor.build_flattened_features(max_hop=max_hop)
+    if features.ndim == 1:
+        features = features[None, :]
+
+    return {
+        "feature_type": "graph_diffused",
+        "candidate_keys": candidate_keys,
+        "features": features.astype(np.float32, copy=False),
+        "feature_dim": int(features.shape[1]),
+        "metadata": {
+            "benchmark": benchmark,
+            "max_hop": max_hop,
+            "self_loop_weight": self_loop_weight,
+            "num_graph_nodes": int(graph_builder.node_features.shape[0]),
+            "num_graph_edges": int(len(graph_builder.edge_weights)),
+            "partition_feature_shape": list(partition_node_features.shape),
+        },
+    }

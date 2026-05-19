@@ -128,9 +128,8 @@ def main() -> None:
         )
         diffused_partition_features = diffused_feature_constructor.build_flattened_features()
         partition_feature_summary = {
-            "partition_feature_shape": list(partition_node_features.shape[1:]),
-            "all_partition_feature_shape": list(partition_node_features.shape),
-            "diffused_partition_feature_shape": list(diffused_partition_features.shape),
+            "partition_feature_shape": list(partition_node_features.shape),
+            "flattened_diffused_partition_feature_shape": list(diffused_partition_features.shape),
             "partition_feature_names": [
                 "partition_label",
                 "incident_cut_net_count",
