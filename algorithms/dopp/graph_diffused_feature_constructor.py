@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
+from sklearn.decomposition import PCA
 
 
 class GraphDiffusedFeatureConstructor:
@@ -38,6 +42,10 @@ class GraphDiffusedFeatureConstructor:
                 f"self_loop_weight must be non-negative, got {self.self_loop_weight}"
             )
 
+        self.last_pca_explained_variance_ratio_: Optional[np.ndarray] = None
+        self.last_pca_eigenvalues_: Optional[np.ndarray] = None
+        self.last_full_pca_explained_variance_ratio_: Optional[np.ndarray] = None
+        self.last_full_pca_eigenvalues_: Optional[np.ndarray] = None
         self.normalized_adjacency = self.build_normalized_adjacency()
 
     def build_normalized_adjacency(self) -> np.ndarray:
@@ -110,6 +118,100 @@ class GraphDiffusedFeatureConstructor:
         """
         return self.build_flattened_features(max_hop=max_hop)
 
+    def compress_feature_dimension(
+        self,
+        features: np.ndarray,
+        n_components: int,
+    ) -> np.ndarray:
+        """
+        Compress a feature matrix with PCA.
+
+        Args:
+            features: ``[n_samples, feature_dim]`` or ``[feature_dim]``.
+            n_components: PCA target output dimension.
+
+        Returns:
+            Compressed features with shape ``[n_samples, n_components]`` or
+            ``[n_components]`` for one sample input.
+        """
+        features_array = np.asarray(features, dtype=np.float32)
+        if features_array.ndim == 1:
+            features_2d = features_array[None, :]
+            squeeze_output = True
+        elif features_array.ndim == 2:
+            features_2d = features_array
+            squeeze_output = False
+        else:
+            raise ValueError(
+                "features must have shape [feature_dim] or [n_samples, feature_dim], "
+                f"got {features_array.shape}"
+            )
+
+        max_components = min(features_2d.shape[0], features_2d.shape[1])
+        if n_components > max_components:
+            raise ValueError(
+                "n_components must be <= min(n_samples, feature_dim): "
+                f"{n_components} > {max_components}"
+            )
+
+        pca = PCA(n_components=n_components)
+        compressed_features = pca.fit_transform(features_2d).astype(np.float32, copy=False)
+        self.last_pca_eigenvalues_ = pca.explained_variance_.astype(np.float32, copy=False)
+        self.last_pca_explained_variance_ratio_ = pca.explained_variance_ratio_.astype(
+            np.float32,
+            copy=False,
+        )
+        if squeeze_output:
+            return compressed_features.reshape(-1)
+        return compressed_features
+
+    def fit_full_pca_spectrum(self, features: np.ndarray) -> None:
+        """
+        Fit PCA with full rank to expose eigenvalues before dimensionality reduction.
+
+        Stores diagnostics on the instance:
+        - ``last_full_pca_eigenvalues_``
+        - ``last_full_pca_explained_variance_ratio_``
+        """
+        features_array = np.asarray(features, dtype=np.float32)
+        if features_array.ndim == 1:
+            features_2d = features_array[None, :]
+        elif features_array.ndim == 2:
+            features_2d = features_array
+        else:
+            raise ValueError(
+                "features must have shape [feature_dim] or [n_samples, feature_dim], "
+                f"got {features_array.shape}"
+            )
+
+        # PCA variance is undefined with fewer than 2 samples.
+        if features_2d.shape[0] < 2:
+            self.last_full_pca_eigenvalues_ = np.array([], dtype=np.float32)
+            self.last_full_pca_explained_variance_ratio_ = np.array([], dtype=np.float32)
+            return
+
+        pca_full = PCA(n_components=None)
+        pca_full.fit(features_2d)
+        self.last_full_pca_eigenvalues_ = pca_full.explained_variance_.astype(
+            np.float32,
+            copy=False,
+        )
+        self.last_full_pca_explained_variance_ratio_ = pca_full.explained_variance_ratio_.astype(
+            np.float32,
+            copy=False,
+        )
+
+    def build_compressed_features(
+        self,
+        max_hop: int = 2,
+        n_components: int = 32,
+    ) -> np.ndarray:
+        """
+        Build flattened features and apply PCA compression.
+        """
+        flattened_features = self.build_flattened_features(max_hop=max_hop)
+        return self.compress_feature_dimension(flattened_features, n_components=n_components)
+
     @staticmethod
     def _validate_partition_node_features(
         partition_node_features: np.ndarray,
@@ -174,6 +276,7 @@ def build_graph_diffused_feature_bundle(
     benchmark: str,
     candidates_path: Path,
     max_hop: int = 2,
+    pca_components: Optional[int] = None,
     def_path: Optional[Path] = None,
     upper_die_macros: Optional[str] = None,
     partition_result: Optional[str] = None,
@@ -190,7 +293,7 @@ def build_graph_diffused_feature_bundle(
     loading path.
     """
     from algorithms.dopp.dmp_loader import DreamPlaceLoader
-    from algorithms.dopp.feature_construction_manual import load_candidates_from_json
+    from algorithms.dopp.manual_feature_constructor import load_candidates_from_json
     from algorithms.dopp.graph_builder import GraphBuilder
     from algorithms.dopp.partition_graph_updater import PartitionGraphUpdater
     from algorithms.dopp.utils import _parse_partition_result, _parse_upper_die_macros
@@ -236,17 +339,116 @@ def build_graph_diffused_feature_bundle(
     if features.ndim == 1:
         features = features[None, :]
 
+    final_feature_type = "graph_diffused"
+    metadata: Dict[str, object] = {
+        "benchmark": benchmark,
+        "max_hop": max_hop,
+        "self_loop_weight": self_loop_weight,
+        "num_graph_nodes": int(graph_builder.node_features.shape[0]),
+        "num_graph_edges": int(len(graph_builder.edge_weights)),
+        "partition_feature_shape": list(partition_node_features.shape),
+    }
+
+    constructor.fit_full_pca_spectrum(features)
+    if constructor.last_full_pca_eigenvalues_ is not None:
+        metadata["pca_full_eigenvalues"] = constructor.last_full_pca_eigenvalues_.tolist()
+    if constructor.last_full_pca_explained_variance_ratio_ is not None:
+        metadata["pca_full_explained_variance_ratio"] = (
+            constructor.last_full_pca_explained_variance_ratio_.tolist()
+        )
+        metadata["pca_full_cumulative_explained_variance_ratio"] = np.cumsum(
+            constructor.last_full_pca_explained_variance_ratio_
+        ).tolist()
+
+    if pca_components is not None:
+        original_feature_dim = int(features.shape[1])
+        features = constructor.compress_feature_dimension(features, n_components=pca_components)
+        final_feature_type = "graph_diffused_pca"
+        metadata["pca_components"] = int(pca_components)
+        metadata["original_feature_dim"] = original_feature_dim
+        if constructor.last_pca_explained_variance_ratio_ is not None:
+            metadata["pca_explained_variance_ratio"] = (
+                constructor.last_pca_explained_variance_ratio_.tolist()
+            )
+        if constructor.last_pca_eigenvalues_ is not None:
+            metadata["pca_eigenvalues"] = constructor.last_pca_eigenvalues_.tolist()
+
     return {
-        "feature_type": "graph_diffused",
+        "feature_type": final_feature_type,
         "candidate_keys": candidate_keys,
         "features": features.astype(np.float32, copy=False),
         "feature_dim": int(features.shape[1]),
-        "metadata": {
-            "benchmark": benchmark,
-            "max_hop": max_hop,
-            "self_loop_weight": self_loop_weight,
-            "num_graph_nodes": int(graph_builder.node_features.shape[0]),
-            "num_graph_edges": int(len(graph_builder.edge_weights)),
-            "partition_feature_shape": list(partition_node_features.shape),
-        },
+        "metadata": metadata,
     }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Extract graph-diffused features for D-optimal design and regression."
+    )
+    parser.add_argument(
+        "benchmark",
+        help="Benchmark name matching Place-3D/test/or_3D/<benchmark>_3D.json",
+    )
+    parser.add_argument(
+        "candidates_path",
+        type=Path,
+        help="Path to candidates.json containing candidate partitions.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output directory. Default: evaluation/regression_results/{benchmark}",
+    )
+    parser.add_argument("--max-hop", type=int, default=2, help="Maximum diffusion hop")
+    parser.add_argument("--self-loop-weight", type=float, default=1.0, help="Self-loop weight")
+    parser.add_argument("--def-path", type=Path, default=None, help="Optional DEF file override")
+    parser.add_argument("--upper-die-macros", type=str, default=None, help="Comma-separated upper-die macro names")
+    parser.add_argument("--partition-result", type=str, default=None, help="Comma-separated bottom-die placedb node IDs")
+    parser.add_argument("--scale-factor", type=float, default=1.0, help="Cell area scaling factor")
+    parser.add_argument("--top-k-ratio", type=float, default=0.3, help="Edge keep ratio for dense graphs")
+    parser.add_argument(
+        "--pca-components",
+        type=int,
+        default=None,
+        help="Optional PCA output dimension for compressing flattened features.",
+    )
+    parser.add_argument("--rand-init", action="store_true", default=False, help="Enable DREAMPlace random init")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()))
+
+    if not args.candidates_path.exists():
+        raise FileNotFoundError(f"Candidates file not found: {args.candidates_path}")
+
+    output_data = build_graph_diffused_feature_bundle(
+        benchmark=args.benchmark,
+        candidates_path=args.candidates_path,
+        max_hop=args.max_hop,
+        pca_components=args.pca_components,
+        def_path=args.def_path,
+        upper_die_macros=args.upper_die_macros,
+        partition_result=args.partition_result,
+        scale_factor=args.scale_factor,
+        top_k_ratio=args.top_k_ratio,
+        rand_init=args.rand_init,
+        self_loop_weight=args.self_loop_weight,
+    )
+
+    out_dir = args.output or (
+        Path(__file__).resolve().parents[2] / "evaluation" / "regression_results" / args.benchmark
+    )
+    os.makedirs(out_dir, exist_ok=True)
+    output_path = Path(out_dir) / 'graph_diffused_features.npy'
+    np.save(output_path, output_data, allow_pickle=True)
+    logging.info("Saved graph-diffused feature bundle to %s", output_path)
+    logging.info("Feature shape: %s", output_data["features"].shape)
+
+
+if __name__ == "__main__":
+    main()

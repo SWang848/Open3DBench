@@ -31,7 +31,6 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
     data = np.load(features_path, allow_pickle=True).item()
     candidate_keys = [str(key) for key in data["candidate_keys"]]
     feature_matrix = np.asarray(data["features"], dtype=np.float32)
-    feature_names = data.get("feature_names", [])
     feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
     feature_type = data.get("feature_type", "features")
 
@@ -42,7 +41,6 @@ def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict
     metadata = {
         "feature_type": feature_type,
         "candidate_keys": candidate_keys,
-        "feature_names": feature_names,
         "feature_dim": feature_dim,
         "num_candidates": len(candidate_keys),
         "metadata": data.get("metadata", {}),
@@ -208,7 +206,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("fitness_csv", type=Path, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--d-opt-results", type=Path, default=None, help="Path to D-optimal design results .npy file for weighted regression")
     parser.add_argument("--metrics", type=str, nargs="+", default=None, help="Metrics to use for fitness calculation (default: DRT_WL)")
-    parser.add_argument("--output", type=Path, default=None, help="Path to save trained model. Default: evaluation/regression_results/{case_name}/linear_regressor.pkl")
+    parser.add_argument("--output", type=Path, default=None, help="Path to save trained model. Default: evaluation/regression_results/{case_name}")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return parser.parse_args()
 
@@ -224,7 +222,7 @@ def main() -> None:
     
     case_name = args.features_file.parent.name
     out_dir = args.features_file.parent
-    output_path = args.output or (out_dir / "linear_regressor.pkl")
+    output_path = ( args.output or out_dir ) / "linear_regressor.pkl"
     
     logging.info(f"Loading features from {args.features_file}...")
     X, candidate_keys, metadata = load_features_from_file(args.features_file)
@@ -292,7 +290,6 @@ def main() -> None:
         "model": model,
         "metrics": metrics,
         "candidate_keys": candidate_keys,
-        "feature_names": metadata["feature_names"],
         "feature_dim": X_matched.shape[1],
         "feature_type": metadata.get("feature_type"),
         "used_weighted_regression": d_opt_weights is not None,
@@ -307,15 +304,6 @@ def main() -> None:
     logging.info(f"  Saved trained model to {output_path}")
     logging.info(f"  Model coefficients shape: {model.coef_.shape}")
     logging.info(f"  Model intercept: {model.intercept_:.4f}")
-    
-    # Print feature importance (top coefficients by absolute value)
-    if len(metadata["feature_names"]) > 0:
-        coef_abs = np.abs(model.coef_)
-        top_indices = np.argsort(coef_abs)[-10:][::-1]
-        logging.info("Top 10 most important features (by absolute coefficient):")
-        for idx in top_indices:
-            feature_name = metadata["feature_names"][idx] if idx < len(metadata["feature_names"]) else f"feature_{idx}"
-            logging.info(f"  {feature_name}: {model.coef_[idx]:.6f}")
 
     # Predict on all solutions and calculate Kendall's tau for top 15
     logging.info("=" * 60)

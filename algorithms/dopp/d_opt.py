@@ -253,7 +253,6 @@ def load_features_from_file(features_path: Path, fitness_csv: Path = None, featu
     data = np.load(features_path, allow_pickle=True).item()
     candidate_keys = [str(key) for key in data["candidate_keys"]]
     feature_matrix = np.asarray(data["features"], dtype=np.float32)
-    feature_names = data.get("feature_names", [])
     feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
 
     if fitness_csv is not None:
@@ -278,7 +277,6 @@ def load_features_from_file(features_path: Path, fitness_csv: Path = None, featu
     metadata = {
         "feature_type": bundle_feature_type,
         "candidate_keys": candidate_keys,
-        "feature_names": feature_names,
         "feature_dim": feature_dim,
         "num_candidates": len(candidate_keys),
         "metadata": data.get("metadata", {}),
