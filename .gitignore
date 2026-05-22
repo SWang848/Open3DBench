@@ -105,6 +105,7 @@ Place-3D/thirdparty/*/install/
 OpenROAD-3D/thirdparty/*/build/
 OpenROAD-3D/thirdparty/*/install/
 
+script
 # Keep only these specific files tracked:
 # - Source code files (.py, .cpp, .h, .hpp, .c, .tcl, .sh)
 # - Configuration files (.json, .yaml, .yml, .toml, .cfg)

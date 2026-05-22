@@ -345,9 +345,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("features_file", type=Path, help="Path to standardized feature bundle .npy file")
     parser.add_argument("--fitness-csv", type=Path, default=None, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
-    parser.add_argument("--method", type=str, default="scipy", choices=["frank_wolfe", "scipy"], 
+    parser.add_argument("--method", type=str, default="frank_wolfe", choices=["frank_wolfe", "scipy"], 
                        help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
-    parser.add_argument("--tol", type=float, default=1e-8, help="Tolerance for the stopping rule |g_star - d| <= tol")
+    parser.add_argument("--tol", type=float, default=1e-2, help="Tolerance for the stopping rule |g_star - d| <= tol")
     parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
                        help="Step size scheme (only used for Frank-Wolfe method)")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
