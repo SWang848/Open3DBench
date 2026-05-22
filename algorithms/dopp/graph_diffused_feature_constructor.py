@@ -293,8 +293,8 @@ def build_graph_diffused_feature_bundle(
     loading path.
     """
     from algorithms.dopp.dmp_loader import DreamPlaceLoader
-    from algorithms.dopp.manual_feature_constructor import load_candidates_from_json
     from algorithms.dopp.graph_builder import GraphBuilder
+    from algorithms.dopp.loaders import load_candidates_from_json
     from algorithms.dopp.partition_graph_updater import PartitionGraphUpdater
     from algorithms.dopp.utils import _parse_partition_result, _parse_upper_die_macros
 

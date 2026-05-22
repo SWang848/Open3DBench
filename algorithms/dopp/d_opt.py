@@ -3,12 +3,13 @@ import logging
 import math
 from pathlib import Path
 import os
-from typing import Tuple, Dict
+from typing import Tuple
 
 import numpy as np
 from scipy.optimize import minimize, LinearConstraint, Bounds
 from scipy.optimize import linprog
-import pandas as pd
+
+from algorithms.dopp.loaders import load_features_from_file
 
 def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     """
@@ -223,66 +224,6 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
     logging.info(f"g_star value:{g_star:.4f}")
     
     return w, history
-
-
-def load_fitness_scores_from_csv(fitness_csv: Path) -> Dict[str, float]:
-    df = pd.read_csv(fitness_csv)
-    if "Fitness" not in df.columns:
-        raise ValueError("Fitness CSV must contain a 'Fitness' column for D-optimal filtering")
-    return {
-        str(row["Key"]): float(row["Fitness"])
-        for _, row in df.iterrows()
-    }
-
-
-def load_features_from_file(features_path: Path, fitness_csv: Path = None, feature_type: str = "features") -> Tuple[np.ndarray, list, Dict]:
-    """
-    Load features from the output of FeatureConstructionByManual.py.
-    The fitness csv file is used to filter out candidates with NaN/inf fitness values.
-    
-    Args:
-        features_path: Path to the .npy file containing features
-        fitness_csv: Path to the CSV file with fitness scores
-    Returns:
-        Tuple of (feature_matrix, candidate_keys, metadata)
-        - feature_matrix: np.ndarray of shape (N, d) where N is number of candidates
-        - candidate_keys: List of candidate keys in the same order as rows in feature_matrix
-        - metadata: Dictionary with feature information
-    """
-
-    data = np.load(features_path, allow_pickle=True).item()
-    candidate_keys = [str(key) for key in data["candidate_keys"]]
-    feature_matrix = np.asarray(data["features"], dtype=np.float32)
-    feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
-
-    if fitness_csv is not None:
-        fitness_dict = load_fitness_scores_from_csv(fitness_csv)
-
-        valid_indices = []
-        for i, key in enumerate(candidate_keys):
-            val = fitness_dict.get(key)
-            if val is None or not np.isfinite(val):
-                continue
-            valid_indices.append(i)
-    
-        if len(valid_indices) != len(candidate_keys):
-            dropped = len(candidate_keys) - len(valid_indices)
-            logging.info(f"Dropped {dropped} candidates with NaN/inf fitness scores")
-            candidate_keys = [candidate_keys[i] for i in valid_indices]
-            feature_matrix = feature_matrix[valid_indices]
-
-    bundle_feature_type = data.get("feature_type", feature_type)
-    logging.info(f"Using {bundle_feature_type} features: shape={feature_matrix.shape}")
-    
-    metadata = {
-        "feature_type": bundle_feature_type,
-        "candidate_keys": candidate_keys,
-        "feature_dim": feature_dim,
-        "num_candidates": len(candidate_keys),
-        "metadata": data.get("metadata", {}),
-    }
-    
-    return feature_matrix, candidate_keys, metadata
 
 
 def select_candidates_by_weights(

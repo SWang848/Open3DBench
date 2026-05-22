@@ -7,10 +7,9 @@ expensive PPA oracle (looked up from ``metrics.csv``), trains a region-level
 linear surrogate on the labeled regions, and uses it to pick a second batch
 of regions (Round 2).
 
-The implementation is intentionally additive: it reuses the existing
-``frank_wolfe_d_optimal`` / ``select_candidates_by_weights`` solvers from
-``algorithms.dopp.d_opt`` and the fitness loader from
-``algorithms.dopp.regression`` without modifying them.
+The implementation reuses the existing ``frank_wolfe_d_optimal`` /
+``select_candidates_by_weights`` solvers from ``algorithms.dopp.d_opt`` and
+shared data-loading helpers from ``algorithms.dopp.loaders``.
 """
 
 from __future__ import annotations
@@ -34,10 +33,9 @@ from sklearn.preprocessing import StandardScaler
 
 from algorithms.dopp.d_opt import (
     frank_wolfe_d_optimal,
-    load_features_from_file,
     select_candidates_by_weights,
 )
-from algorithms.dopp.regression import load_fitness_scores_from_csv
+from algorithms.dopp.loaders import load_features_from_file, load_fitness_scores_from_csv
 
 
 # ----------------------------------------------------------------------------

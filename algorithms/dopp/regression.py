@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import sys
@@ -9,82 +8,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 from scipy.stats import kendalltau
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.model_selection import train_test_split
 
-from evaluation.get_metrics import cal_fitness_score
-
-
-def load_features_from_file(features_path: Path) -> Tuple[np.ndarray, list, Dict]:
-    """
-    Load features from the output of FeatureConstructionByManual.py.
-    
-    Args:
-        features_path: Path to the .npy file containing features
-    
-    Returns:
-        Tuple of (feature_matrix, candidate_keys, metadata)
-    """
-    data = np.load(features_path, allow_pickle=True).item()
-    candidate_keys = [str(key) for key in data["candidate_keys"]]
-    feature_matrix = np.asarray(data["features"], dtype=np.float32)
-    feature_dim = int(data.get("feature_dim", feature_matrix.shape[1]))
-    feature_type = data.get("feature_type", "features")
-
-    logging.info(f"Loaded {feature_type}: shape={feature_matrix.shape}")
-    logging.info(f"  Number of candidates: {len(candidate_keys)}")
-    logging.info(f"  Feature dimension: {feature_dim}")
-    
-    metadata = {
-        "feature_type": feature_type,
-        "candidate_keys": candidate_keys,
-        "feature_dim": feature_dim,
-        "num_candidates": len(candidate_keys),
-        "metadata": data.get("metadata", {}),
-    }
-    
-    return feature_matrix, candidate_keys, metadata
-
-
-def load_fitness_scores_from_csv(
-    csv_path: Path,
-    metrics: List[str] = None,
-) -> Dict[str, float]:
-    """
-    Load fitness scores from a CSV file (output from get_metrics.py).
-    
-    Args:
-        csv_path: Path to CSV file with metrics and fitness scores
-        metrics: List of metrics to use for fitness calculation. If provided, 
-                 fitness will be recalculated even if "Fitness" column exists.
-    
-    Returns:
-        Dictionary mapping candidate keys to fitness scores
-    """
-    df = pd.read_csv(csv_path)
-    
-    # If metrics are provided, always recalculate fitness
-    if metrics is not None:
-        logging.info(f"Recalculating fitness scores from metrics: {metrics}")
-        df_with_fitness, _ = cal_fitness_score(df, metrics)
-        fitness_dict = {}
-        for idx, row in df_with_fitness.iterrows():
-            key_val = str(row["Key"])
-            fitness_dict[key_val] = float(row["Fitness"])
-        return fitness_dict
-    # Otherwise, use existing Fitness column if available
-    elif "Fitness" in df.columns:
-        logging.info("Using existing Fitness scores from CSV file")
-        fitness_dict = {}
-        for idx, row in df.iterrows():
-            key_val = str(row["Key"])
-            fitness_dict[key_val] = float(row["Fitness"])
-        return fitness_dict
-    else:
-        raise ValueError("CSV file does not contain 'Fitness' column and no metrics provided for calculation")
+from algorithms.dopp.loaders import load_features_from_file, load_fitness_scores_from_csv
 
 
 def load_d_optimal_selection(

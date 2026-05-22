@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import math
@@ -16,35 +15,7 @@ from sklearn.preprocessing import PolynomialFeatures
 
 from algorithms.dopp._place3d_bridge import REPO_ROOT, Params, PlaceDB
 from algorithms.dopp.hierarchy_multi_objective_sa import graph_construction
-
-
-def load_candidates_from_json(json_path: Path) -> List[Tuple[str, List[List[int]], Tuple[float, float]]]:
-    """
-    Load candidate solutions from HMSA results JSON file.
-    Returns list of (key, solution, cost) tuples.
-    """
-    with open(json_path, "r") as fp:
-        data = json.load(fp)
-    
-    candidates = []
-    for key, entries in data["pareto_archive"]["solutions"].items():
-        if isinstance(entries, list):
-            iterable = [(f"{key}_{idx}", entry) for idx, entry in enumerate(entries)]
-        else:
-            iterable = [(str(key), entries)]
-
-        for candidate_key, entry in iterable:
-            raw_solution = entry.get("solution", [[], []])
-            cost = entry.get("cost", [0.0, 0.0])
-
-            lower_ids = [int(node_id) for node_id in raw_solution[0]]
-            upper_ids = [int(node_id) for node_id in raw_solution[1]]
-            cut_size = float(cost[0])
-            area_imbalance = float(cost[1])
-
-            candidates.append((candidate_key, [lower_ids, upper_ids], (cut_size, area_imbalance)))
-    
-    return candidates
+from algorithms.dopp.loaders import load_candidates_from_json
 
 
 class ManualFeatureConstructor:
