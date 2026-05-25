@@ -243,25 +243,6 @@ def cluster_balanced(
 # ----------------------------------------------------------------------------
 
 
-REGION_FEATURE_NAMES_BASE: Tuple[str, ...] = (
-    "cut_min",
-    "cut_max",
-    "cut_mean",
-    "cut_std",
-    "imb_min",
-    "imb_max",
-    "imb_mean",
-    "imb_std",
-    "region_size",
-)
-
-
-def _pca_feature_names(n_components: int) -> List[str]:
-    names = [f"pca_mean_{i}" for i in range(n_components)]
-    names += [f"pca_std_{i}" for i in range(n_components)]
-    return names
-
-
 def build_region_features(
     proxies: np.ndarray,
     Z: np.ndarray,
@@ -327,9 +308,8 @@ def build_region_features(
 
 def qr_rank_cleanup(
     X: np.ndarray,
-    feature_names: Sequence[str],
     tol: float = 1e-10,
-) -> Tuple[np.ndarray, List[str], List[int]]:
+) -> Tuple[np.ndarray, List[int]]:
     """QR-pivot rank cleanup (mirrors ``manual_feature_constructor``)."""
     _, r_matrix, piv = la.qr(X, mode="economic", pivoting=True)
     rank = int(np.sum(np.abs(np.diag(r_matrix)) > tol))
@@ -337,18 +317,16 @@ def qr_rank_cleanup(
     dependent_columns = np.sort(piv[rank:])
 
     if dependent_columns.size > 0:
-        dropped_names = [feature_names[c] for c in dependent_columns]
         logging.info(
             "Region features: dropped %d linearly dependent columns: %s",
             dependent_columns.size,
-            dropped_names,
+            dependent_columns.tolist(),
         )
     else:
         logging.info("Region features: full rank, no columns dropped")
 
     cleaned = X[:, independent_columns]
-    kept_names = [feature_names[c] for c in independent_columns]
-    return cleaned, kept_names, independent_columns.tolist()
+    return cleaned, independent_columns.tolist()
 
 
 # ----------------------------------------------------------------------------
@@ -464,24 +442,14 @@ def train_region_surrogate(
     y_region_labeled: np.ndarray,
     ridge_alpha: float = 1.0,
 ) -> Tuple[object, Dict[str, float]]:
-    """Train region-level surrogate. Use Ridge when the labeled set is too
-    small (n_train <= d_region) to avoid degenerate LinearRegression fits."""
+    """Train region-level surrogate."""
     n_train, d_region = X_region_labeled.shape
-    if n_train <= d_region:
-        logging.info(
-            "Region surrogate: n_train=%d <= d_region=%d, using Ridge(alpha=%.3f)",
-            n_train,
-            d_region,
-            ridge_alpha,
-        )
-        model = Ridge(alpha=ridge_alpha)
-    else:
-        logging.info(
-            "Region surrogate: n_train=%d > d_region=%d, using LinearRegression",
-            n_train,
-            d_region,
-        )
-        model = LinearRegression()
+    logging.info(
+        "Region surrogate: n_train=%d > d_region=%d, using LinearRegression",
+        n_train,
+        d_region,
+    )
+    model = LinearRegression()
 
     model.fit(X_region_labeled, y_region_labeled)
     y_pred = model.predict(X_region_labeled)
@@ -559,7 +527,6 @@ def run_two_level_dopp(
     Z = pca.fit_transform(X_std)
 
     # Step 4: region feature construction.
-    feature_names = list(REGION_FEATURE_NAMES_BASE) + _pca_feature_names(pca_dim)
     X_region_full, region_sizes, region_indices = build_region_features(
         proxies=proxies,
         Z=Z,
@@ -572,9 +539,7 @@ def run_two_level_dopp(
     )
 
     # Step 5: QR-pivot rank cleanup.
-    X_region, kept_feature_names, kept_columns = qr_rank_cleanup(
-        X_region_full, feature_names
-    )
+    X_region, kept_columns = qr_rank_cleanup(X_region_full)
     logging.info(
         "Region feature matrix (post-cleanup): shape=%s, kept_dim=%d",
         X_region.shape,
@@ -768,8 +733,6 @@ def run_two_level_dopp(
         "region_features": {
             "X_region_full": X_region_full,
             "X_region": X_region,
-            "feature_names_full": feature_names,
-            "feature_names_kept": kept_feature_names,
             "kept_columns": kept_columns,
         },
         "round1": {

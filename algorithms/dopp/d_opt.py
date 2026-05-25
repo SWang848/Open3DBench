@@ -3,9 +3,10 @@ import logging
 import math
 from pathlib import Path
 import os
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
+import scipy.linalg as la
 from scipy.optimize import minimize, LinearConstraint, Bounds
 from scipy.optimize import linprog
 
@@ -226,6 +227,29 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
     return w, history
 
 
+def qr_rank_cleanup(
+    X: np.ndarray,
+    tol: float = 1e-10,
+) -> Tuple[np.ndarray, List[int]]:
+    """QR-pivot rank cleanup for removing linearly dependent feature columns."""
+    _, r_matrix, piv = la.qr(X, mode="economic", pivoting=True)
+    rank = int(np.sum(np.abs(np.diag(r_matrix)) > tol))
+    independent_columns = np.sort(piv[:rank])
+    dependent_columns = np.sort(piv[rank:])
+
+    if dependent_columns.size > 0:
+        logging.info(
+            "D-opt features: dropped %d linearly dependent columns: %s",
+            dependent_columns.size,
+            dependent_columns.tolist(),
+        )
+    else:
+        logging.info("D-opt features: full rank, no columns dropped")
+
+    cleaned = X[:, independent_columns]
+    return cleaned, independent_columns.tolist()
+
+
 def select_candidates_by_weights(
     weights: np.ndarray,
     top_k: float = None,
@@ -317,6 +341,12 @@ def main() -> None:
     # Load features
     logging.info(f"Loading features from {args.features_file}...")
     X, candidate_keys, metadata = load_features_from_file(args.features_file, args.fitness_csv, args.feature_type)
+    original_feature_dim = X.shape[1]
+    X, kept_columns = qr_rank_cleanup(X)
+    metadata = dict(metadata)
+    metadata["original_feature_dim"] = int(original_feature_dim)
+    metadata["feature_dim"] = int(X.shape[1])
+    metadata["kept_columns"] = kept_columns
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
     r = np.sum(S > 1e-8)
     logging.info(f"Effective rank of feature matrix: {r}")
