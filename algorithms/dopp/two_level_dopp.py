@@ -3,9 +3,10 @@
 Splits the ~10k candidates into balanced regions in solution-feature space,
 runs region-level D-optimal design (Round 1) to pick informative regions,
 runs solution-level D-optimal design inside each picked region to query the
-expensive PPA oracle (looked up from ``metrics.csv``), trains a region-level
-linear surrogate on the labeled regions, and uses it to pick a second batch
-of regions (Round 2).
+expensive PPA oracle (looked up from ``metrics.csv``), uses local solution
+surrogates to propose additional candidates inside selected regions, trains a
+region-level linear surrogate on the labeled regions, and uses it to pick a
+second batch of regions (Round 2).
 
 The implementation reuses the existing ``frank_wolfe_d_optimal`` /
 ``select_candidates_by_weights`` solvers from ``algorithms.dopp.d_opt`` and
@@ -24,11 +25,9 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 import scipy.linalg as la
-from scipy.stats import kendalltau
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 
 from algorithms.dopp.d_opt import (
@@ -374,27 +373,59 @@ def inner_dopt_select(
     return np.asarray(sel_inner, dtype=np.int64)
 
 
+def select_top_predicted_candidates(
+    predicted_scores: np.ndarray,
+    top_k: int,
+) -> np.ndarray:
+    """Pick the best predicted local indices among all candidates."""
+    if top_k <= 0:
+        return np.array([], dtype=np.int64)
+
+    k_eff = min(top_k, predicted_scores.shape[0])
+    return np.argsort(predicted_scores)[:k_eff].astype(np.int64, copy=False)
+
+
 def evaluate_regions_via_oracle(
     region_ids: Sequence[int],
     region_indices: List[List[int]],
-    X: np.ndarray,
+    X_std: np.ndarray,
     y: np.ndarray,
+    inner_pca_components: int,
     inner_top_k_frac: float,
+    inner_prediction_top_k: int,
     fw_tol: float,
     fw_step_scheme: str,
     fw_epsilon: float,
-) -> Tuple[Dict[int, float], Dict[int, int], List[int], Dict[int, List[int]]]:
-    """Per region: inner D-opt -> oracle eval -> region best fitness.
+    random_state: int,
+) -> Tuple[
+    Dict[int, float],
+    Dict[int, int],
+    Dict[int, str],
+    List[int],
+    Dict[int, List[int]],
+    Dict[int, List[int]],
+]:
+    """Per region: inner D-opt + local surrogate -> region best fitness.
+
+    Inner D-opt uses a local PCA basis fit only on the standardized solution
+    features of the current region. The selected D-opt candidates are evaluated
+    with the oracle, then a local linear surrogate predicts all candidates.
+    The top ``inner_prediction_top_k`` predicted candidates are also evaluated, and the
+    region best is the minimum true fitness among all evaluated candidates.
 
     Returns:
-        ``region_best_fitness``  (region -> best fitness in evaluated solutions)
-        ``region_best_solution`` (region -> global index of the best evaluated solution)
-        ``evaluated_indices``    (flat list of all evaluated global solution indices)
-        ``evaluated_per_region`` (region -> list of evaluated global indices)
+        ``region_best_fitness``          (region -> best evaluated fitness)
+        ``region_best_solution``         (region -> best global solution index)
+        ``region_best_source``           (region -> dopt or surrogate)
+        ``evaluated_indices``            (flat list of all evaluated indices)
+        ``evaluated_per_region``         (region -> list of evaluated indices)
+        ``surrogate_evaluated_per_region`` (region -> surrogate-proposed evaluated indices)
     """
     region_best_fitness: Dict[int, float] = {}
     region_best_solution: Dict[int, int] = {}
+    region_best_source: Dict[int, str] = {}
     evaluated_per_region: Dict[int, List[int]] = {}
+    surrogate_evaluated_per_region: Dict[int, List[int]] = {}
     evaluated_indices: List[int] = []
 
     for r in region_ids:
@@ -403,7 +434,18 @@ def evaluate_regions_via_oracle(
             logging.warning("Skipping empty region %d in oracle evaluation", r)
             continue
 
-        X_r = X[members]
+        X_r_std = X_std[members]
+        if members.size > 1:
+            local_pca_dim = min(
+                inner_pca_components,
+                max(1, members.size - 1),
+                X_r_std.shape[1],
+            )
+            X_r = PCA(n_components=local_pca_dim, random_state=random_state).fit_transform(
+                X_r_std
+            )
+        else:
+            X_r = X_r_std
         sel_local = inner_dopt_select(
             X_r,
             inner_top_k_frac=inner_top_k_frac,
@@ -413,58 +455,62 @@ def evaluate_regions_via_oracle(
         )
         sel_global = members[sel_local]
         y_sel = y[sel_global]
-        best_local_pos = int(np.argmin(y_sel))
-        best_global_idx = int(sel_global[best_local_pos])
 
-        region_best_fitness[int(r)] = float(y_sel[best_local_pos])
+        surrogate_local = np.array([], dtype=np.int64)
+        local_surrogate = LinearRegression()
+        local_surrogate.fit(X_r[sel_local], y_sel)
+        if inner_prediction_top_k > 0:
+            predicted_scores = local_surrogate.predict(X_r).astype(np.float64, copy=False)
+            surrogate_local = select_top_predicted_candidates(
+                predicted_scores,
+                top_k=inner_prediction_top_k,
+            )
+
+        evaluated_local = np.unique(np.concatenate([sel_local, surrogate_local]))
+        evaluated_global = members[evaluated_local]
+        evaluated_y = y[evaluated_global]
+        best_eval_pos = int(np.argmin(evaluated_y))
+        best_local_pos = int(evaluated_local[best_eval_pos])
+        best_global_idx = int(evaluated_global[best_eval_pos])
+        surrogate_local_set = set(int(i) for i in surrogate_local.tolist())
+        best_source = "surrogate" if best_local_pos in surrogate_local_set else "dopt"
+
+        region_best_fitness[int(r)] = float(evaluated_y[best_eval_pos])
         region_best_solution[int(r)] = best_global_idx
-        evaluated_per_region[int(r)] = sel_global.tolist()
-        evaluated_indices.extend(sel_global.tolist())
+        region_best_source[int(r)] = best_source
+        evaluated_per_region[int(r)] = evaluated_global.tolist()
+        surrogate_evaluated_per_region[int(r)] = members[surrogate_local].tolist()
+        evaluated_indices.extend(evaluated_global.tolist())
 
         logging.info(
-            "  Region %d: inner_picks=%d, region_best_fitness=%.4f, region_size=%d",
+            "  Region %d: dopt_picks=%d, surrogate_picks=%d, "
+            "region_best_fitness=%.4f (%s), region_size=%d",
             int(r),
             sel_global.size,
+            surrogate_local.size,
             region_best_fitness[int(r)],
+            region_best_source[int(r)],
             members.size,
         )
 
     return (
         region_best_fitness,
         region_best_solution,
+        region_best_source,
         evaluated_indices,
         evaluated_per_region,
+        surrogate_evaluated_per_region,
     )
 
 
 def train_region_surrogate(
     X_region_labeled: np.ndarray,
     y_region_labeled: np.ndarray,
-    ridge_alpha: float = 1.0,
-) -> Tuple[object, Dict[str, float]]:
+) -> object:
     """Train region-level surrogate."""
-    n_train, d_region = X_region_labeled.shape
-    logging.info(
-        "Region surrogate: n_train=%d > d_region=%d, using LinearRegression",
-        n_train,
-        d_region,
-    )
     model = LinearRegression()
-
     model.fit(X_region_labeled, y_region_labeled)
-    y_pred = model.predict(X_region_labeled)
-    train_metrics = {
-        "train_mse": float(mean_squared_error(y_region_labeled, y_pred)),
-        "train_rmse": float(np.sqrt(mean_squared_error(y_region_labeled, y_pred))),
-        "train_mae": float(mean_absolute_error(y_region_labeled, y_pred)),
-        "train_r2": float(r2_score(y_region_labeled, y_pred)),
-    }
-    logging.info(
-        "Region surrogate train: RMSE=%.4f, R^2=%.4f",
-        train_metrics["train_rmse"],
-        train_metrics["train_r2"],
-    )
-    return model, train_metrics
+    return model
 
 
 # ----------------------------------------------------------------------------
@@ -483,6 +529,7 @@ def run_two_level_dopp(
     region_top_k: int,
     round2_top_k: int,
     inner_top_k_frac: float,
+    inner_prediction_top_k: int,
     fw_tol: float,
     fw_step_scheme: str,
     fw_epsilon: float,
@@ -494,6 +541,11 @@ def run_two_level_dopp(
     if n_regions >= n_samples:
         raise ValueError(
             f"n_regions ({n_regions}) must be < number of candidates ({n_samples})"
+        )
+    if inner_prediction_top_k < 0:
+        raise ValueError(
+            "inner_prediction_top_k must be non-negative, "
+            f"got {inner_prediction_top_k}"
         )
 
     # Step 1: standardize solution features.
@@ -525,6 +577,10 @@ def run_two_level_dopp(
         )
     pca = PCA(n_components=pca_dim, random_state=random_state)
     Z = pca.fit_transform(X_std)
+    logging.info(
+        "Global PCA feature matrix for region stats: shape=%s",
+        Z.shape,
+    )
 
     # Step 4: region feature construction.
     X_region_full, region_sizes, region_indices = build_region_features(
@@ -567,17 +623,22 @@ def run_two_level_dopp(
     (
         region_best_fitness_r1,
         region_best_solution_r1,
+        region_best_source_r1,
         evaluated_r1,
         evaluated_per_region_r1,
+        surrogate_evaluated_per_region_r1,
     ) = evaluate_regions_via_oracle(
         region_ids=round1_regions,
         region_indices=region_indices,
-        X=X,
+        X_std=X_std,
         y=y,
+        inner_pca_components=pca_dim,
         inner_top_k_frac=inner_top_k_frac,
+        inner_prediction_top_k=inner_prediction_top_k,
         fw_tol=fw_tol,
         fw_step_scheme=fw_step_scheme,
         fw_epsilon=fw_epsilon,
+        random_state=random_state,
     )
 
     # Step 8: train region surrogate on Round 1 labeled regions.
@@ -589,88 +650,76 @@ def run_two_level_dopp(
     y_region_labeled = np.array(
         [region_best_fitness_r1[r] for r in labeled_region_ids], dtype=np.float64
     )
-    surrogate, surrogate_train_metrics = train_region_surrogate(
+    surrogate = train_region_surrogate(
         X_region_labeled, y_region_labeled
     )
 
-    # Step 9: Round 2 surrogate-guided selection on unlabeled regions.
+    # Step 9: Round 2 surrogate-guided selection over all regions. This mirrors
+    # the inner loop: predict every item, take the top predictions, then evaluate
+    # only items not already covered by the D-opt stage.
     labeled_set = set(labeled_region_ids)
-    unlabeled_ids = [r for r in range(n_regions) if r not in labeled_set]
-
-    if len(unlabeled_ids) == 0:
-        logging.warning("No unlabeled regions left for Round 2; skipping it.")
-        round2_regions: List[int] = []
-        y_region_pred_unlabeled = np.array([], dtype=np.float64)
-        kendall_tau = float("nan")
-        kendall_p = float("nan")
-    else:
-        X_region_unlabeled = X_region[unlabeled_ids]
-        y_region_pred_unlabeled = surrogate.predict(X_region_unlabeled)
-        # Pick `round2_top_k` unlabeled regions with smallest predicted fitness
-        # (lower-is-better matches the rest of the codebase).
-        round2_top_k_eff = min(round2_top_k, len(unlabeled_ids))
-        order = np.argsort(y_region_pred_unlabeled)[:round2_top_k_eff]
-        round2_regions = [int(unlabeled_ids[i]) for i in order]
-        logging.info(
-            "Round 2: picked %d unlabeled regions by surrogate: %s",
-            len(round2_regions),
-            round2_regions,
-        )
+    y_region_pred_all = surrogate.predict(X_region)
+    round2_top_k_eff = min(max(round2_top_k, 0), n_regions)
+    round2_predicted_regions = select_top_predicted_candidates(
+        y_region_pred_all,
+        top_k=round2_top_k_eff,
+    ).tolist()
+    round2_regions = [int(r) for r in round2_predicted_regions if int(r) not in labeled_set]
+    logging.info(
+        "Round 2: surrogate top-%d regions: %s; new evaluations: %s",
+        round2_top_k_eff,
+        round2_predicted_regions,
+        round2_regions,
+    )
 
     (
         region_best_fitness_r2,
         region_best_solution_r2,
+        region_best_source_r2,
         evaluated_r2,
         evaluated_per_region_r2,
+        surrogate_evaluated_per_region_r2,
     ) = evaluate_regions_via_oracle(
         region_ids=round2_regions,
         region_indices=region_indices,
-        X=X,
+        X_std=X_std,
         y=y,
+        inner_pca_components=pca_dim,
         inner_top_k_frac=inner_top_k_frac,
+        inner_prediction_top_k=inner_prediction_top_k,
         fw_tol=fw_tol,
         fw_step_scheme=fw_step_scheme,
         fw_epsilon=fw_epsilon,
+        random_state=random_state,
     )
-
-    # Kendall's tau on held-out (Round-2) regions: predicted vs true best fitness.
-    if round2_regions and region_best_fitness_r2:
-        # Align over Round-2 regions
-        r2_pred_map: Dict[int, float] = {}
-        for i, r in enumerate(unlabeled_ids):
-            r2_pred_map[int(r)] = float(y_region_pred_unlabeled[i])
-        r2_keys = sorted(region_best_fitness_r2.keys())
-        if len(r2_keys) >= 2:
-            preds = np.array([r2_pred_map[r] for r in r2_keys], dtype=np.float64)
-            trues = np.array(
-                [region_best_fitness_r2[r] for r in r2_keys], dtype=np.float64
-            )
-            tau, p_value = kendalltau(preds, trues)
-            kendall_tau = float(tau) if np.isfinite(tau) else float("nan")
-            kendall_p = float(p_value) if np.isfinite(p_value) else float("nan")
-        else:
-            kendall_tau = float("nan")
-            kendall_p = float("nan")
-    else:
-        kendall_tau = float("nan")
-        kendall_p = float("nan")
 
     # Aggregate evaluated solutions across both rounds.
     all_evaluated = sorted(set(evaluated_r1) | set(evaluated_r2))
     all_evaluated_keys = [candidate_keys[i] for i in all_evaluated]
     oracle_calls = len(all_evaluated)
 
-    # Best solution found.
-    if len(all_evaluated) > 0:
-        y_eval = y[np.asarray(all_evaluated, dtype=np.int64)]
-        best_pos = int(np.argmin(y_eval))
-        best_global_idx = int(all_evaluated[best_pos])
-        best_fitness = float(y_eval[best_pos])
+    # Best recommended solution across evaluated oracle scores.
+    region_best_fitness_all: Dict[int, float] = {}
+    region_best_fitness_all.update(region_best_fitness_r1)
+    region_best_fitness_all.update(region_best_fitness_r2)
+    region_best_solution_all: Dict[int, int] = {}
+    region_best_solution_all.update(region_best_solution_r1)
+    region_best_solution_all.update(region_best_solution_r2)
+    region_best_source_all: Dict[int, str] = {}
+    region_best_source_all.update(region_best_source_r1)
+    region_best_source_all.update(region_best_source_r2)
+
+    if len(region_best_fitness_all) > 0:
+        best_region = min(region_best_fitness_all, key=region_best_fitness_all.get)
+        best_global_idx = int(region_best_solution_all[best_region])
+        best_fitness = float(region_best_fitness_all[best_region])
         best_key = candidate_keys[best_global_idx]
+        best_source = region_best_source_all[best_region]
     else:
         best_global_idx = -1
         best_fitness = float("nan")
         best_key = ""
+        best_source = ""
 
     # Top-K coverage among evaluated (true ranking by `y`).
     true_order = np.argsort(y)
@@ -693,20 +742,8 @@ def run_two_level_dopp(
         )
 
     logging.info("Best fitness across two rounds: %.4f", best_fitness)
+    logging.info("Best solution source: %s", best_source)
     logging.info("Total oracle calls: %d", oracle_calls)
-    logging.info(
-        "Region surrogate train R^2=%.4f, Round-2 Kendall tau=%.4f",
-        surrogate_train_metrics["train_r2"],
-        kendall_tau,
-    )
-
-    # Merge per-round bookkeeping for the output bundle.
-    region_best_fitness_all: Dict[int, float] = {}
-    region_best_fitness_all.update(region_best_fitness_r1)
-    region_best_fitness_all.update(region_best_fitness_r2)
-    region_best_solution_all: Dict[int, int] = {}
-    region_best_solution_all.update(region_best_solution_r1)
-    region_best_solution_all.update(region_best_solution_r2)
 
     return {
         "config": {
@@ -714,12 +751,10 @@ def run_two_level_dopp(
             "pca_components": pca_dim,
             "balanced_method": balanced_method,
             "region_top_k": region_top_k_eff,
-            "round2_top_k": (
-                len(round2_regions)
-                if round2_regions is not None
-                else 0
-            ),
+            "round2_top_k": round2_top_k_eff,
             "inner_top_k_frac": inner_top_k_frac,
+            "inner_prediction_top_k": inner_prediction_top_k,
+            "inner_dopt_feature_space": "region_local_standardized_pca",
             "fw_tol": fw_tol,
             "fw_step_scheme": fw_step_scheme,
             "fw_epsilon": fw_epsilon,
@@ -741,26 +776,25 @@ def run_two_level_dopp(
             "selected_regions": round1_regions,
             "region_best_fitness": region_best_fitness_r1,
             "region_best_solution": region_best_solution_r1,
+            "region_best_source": region_best_source_r1,
             "evaluated_indices": evaluated_r1,
             "evaluated_per_region": evaluated_per_region_r1,
+            "surrogate_evaluated_per_region": surrogate_evaluated_per_region_r1,
         },
         "round2": {
             "selected_regions": round2_regions,
-            "predicted_region_fitness_unlabeled": {
-                int(unlabeled_ids[i]): float(y_region_pred_unlabeled[i])
-                for i in range(len(unlabeled_ids))
-            }
-            if len(unlabeled_ids) > 0
-            else {},
+            "surrogate_selected_regions": round2_predicted_regions,
+            "predicted_region_fitness": {
+                int(r): float(y_region_pred_all[r]) for r in range(n_regions)
+            },
             "region_best_fitness": region_best_fitness_r2,
             "region_best_solution": region_best_solution_r2,
+            "region_best_source": region_best_source_r2,
             "evaluated_indices": evaluated_r2,
             "evaluated_per_region": evaluated_per_region_r2,
-            "kendall_tau": kendall_tau,
-            "kendall_p_value": kendall_p,
+            "surrogate_evaluated_per_region": surrogate_evaluated_per_region_r2,
         },
         "surrogate": {
-            "train_metrics": surrogate_train_metrics,
             "coef": getattr(surrogate, "coef_", None),
             "intercept": getattr(surrogate, "intercept_", None),
             "model_type": type(surrogate).__name__,
@@ -769,11 +803,13 @@ def run_two_level_dopp(
             "best_fitness": best_fitness,
             "best_solution_index": best_global_idx,
             "best_solution_key": best_key,
+            "best_solution_source": best_source,
             "oracle_calls": oracle_calls,
             "all_evaluated_indices": all_evaluated,
             "all_evaluated_keys": all_evaluated_keys,
             "region_best_fitness_all": region_best_fitness_all,
             "region_best_solution_all": region_best_solution_all,
+            "region_best_source_all": region_best_source_all,
             "coverage": coverage_results,
         },
         "candidate_keys": candidate_keys,
@@ -820,6 +856,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--region-top-k", type=int, default=10)
     parser.add_argument("--round2-top-k", type=int, default=10)
     parser.add_argument("--inner-top-k-frac", type=float, default=0.2)
+    parser.add_argument(
+        "--inner-prediction-top-k",
+        type=int,
+        default=1,
+        help=(
+            "Per selected region, take this many candidate solutions with the "
+            "best local surrogate predictions. Candidates already selected by "
+            "inner D-opt may appear here and are de-duplicated before oracle "
+            "evaluation."
+        ),
+    )
     parser.add_argument("--fw-tol", type=float, default=1e-3)
     parser.add_argument(
         "--fw-step-scheme",
@@ -885,6 +932,7 @@ def main() -> None:
         region_top_k=args.region_top_k,
         round2_top_k=args.round2_top_k,
         inner_top_k_frac=args.inner_top_k_frac,
+        inner_prediction_top_k=args.inner_prediction_top_k,
         fw_tol=args.fw_tol,
         fw_step_scheme=args.fw_step_scheme,
         fw_epsilon=args.fw_epsilon,
@@ -900,17 +948,17 @@ def main() -> None:
     # Brief human-readable summary
     summary = results["summary"]
     logging.info("=" * 60)
-    logging.info("Best key: %s (fitness=%.4f)", summary["best_solution_key"], summary["best_fitness"])
+    logging.info(
+        "Best key: %s (fitness=%.4f, source=%s)",
+        summary["best_solution_key"],
+        summary["best_fitness"],
+        summary["best_solution_source"],
+    )
     logging.info("Oracle calls: %d", summary["oracle_calls"])
     for k_label, payload in summary["coverage"].items():
         logging.info(
             "Coverage %s: %d / %d", k_label, payload["hits"], payload["k"]
         )
-    logging.info(
-        "Surrogate train R^2=%.4f, Round-2 Kendall tau=%.4f",
-        results["surrogate"]["train_metrics"]["train_r2"],
-        results["round2"]["kendall_tau"],
-    )
 
 
 if __name__ == "__main__":
