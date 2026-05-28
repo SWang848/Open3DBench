@@ -613,7 +613,7 @@ def run_two_level_dopp(
         tol=fw_tol,
         step_scheme=fw_step_scheme,
         epsilon=fw_epsilon,
-        verbose=False,
+        verbose=True,
     )
     region_top_k_eff = min(region_top_k, n_regions)
     round1_regions = select_top_regions_by_weight(w_region, top_k=region_top_k_eff)
@@ -867,14 +867,14 @@ def parse_args() -> argparse.Namespace:
             "evaluation."
         ),
     )
-    parser.add_argument("--fw-tol", type=float, default=1e-3)
+    parser.add_argument("--fw-tol", type=float, default=1e-2)
     parser.add_argument(
         "--fw-step-scheme",
         type=str,
         default="1/t",
         choices=["1/t", "line_search"],
     )
-    parser.add_argument("--fw-epsilon", type=float, default=1e-8)
+    parser.add_argument("--fw-epsilon", type=float, default=0.0)
     parser.add_argument("--random-state", type=int, default=0)
     parser.add_argument(
         "--output",

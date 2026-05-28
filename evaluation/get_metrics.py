@@ -655,8 +655,8 @@ def main():
         dataframes.append(df)
     
     final_df = pd.concat(dataframes, ignore_index=True)
-    # metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
-    metrics_to_normalize = ["Congestion", "DRT_WL"]
+    metrics_to_normalize = ["Congestion", "DRT_WL", "Final_WNS", "Final_TNS", "Power"]
+    # metrics_to_normalize = ["Congestion", "DRT_WL"]
     # metrics_to_normalize = ["Final_WNS", "Final_TNS"]
     # metrics_to_normalize = ["Power"]
     
