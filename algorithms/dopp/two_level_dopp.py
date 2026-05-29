@@ -404,6 +404,7 @@ def evaluate_regions_via_oracle(
     List[int],
     Dict[int, List[int]],
     Dict[int, List[int]],
+    Dict[int, List[int]],
 ]:
     """Per region: inner D-opt + local surrogate -> region best fitness.
 
@@ -416,15 +417,17 @@ def evaluate_regions_via_oracle(
     Returns:
         ``region_best_fitness``          (region -> best evaluated fitness)
         ``region_best_solution``         (region -> best global solution index)
-        ``region_best_source``           (region -> dopt or surrogate)
+        ``region_best_source``           (region -> dopt, surrogate, or both)
         ``evaluated_indices``            (flat list of all evaluated indices)
         ``evaluated_per_region``         (region -> list of evaluated indices)
+        ``dopt_evaluated_per_region``    (region -> D-opt-selected evaluated indices)
         ``surrogate_evaluated_per_region`` (region -> surrogate-proposed evaluated indices)
     """
     region_best_fitness: Dict[int, float] = {}
     region_best_solution: Dict[int, int] = {}
     region_best_source: Dict[int, str] = {}
     evaluated_per_region: Dict[int, List[int]] = {}
+    dopt_evaluated_per_region: Dict[int, List[int]] = {}
     surrogate_evaluated_per_region: Dict[int, List[int]] = {}
     evaluated_indices: List[int] = []
 
@@ -472,13 +475,20 @@ def evaluate_regions_via_oracle(
         best_eval_pos = int(np.argmin(evaluated_y))
         best_local_pos = int(evaluated_local[best_eval_pos])
         best_global_idx = int(evaluated_global[best_eval_pos])
+        dopt_local_set = set(int(i) for i in sel_local.tolist())
         surrogate_local_set = set(int(i) for i in surrogate_local.tolist())
-        best_source = "surrogate" if best_local_pos in surrogate_local_set else "dopt"
+        if best_local_pos in dopt_local_set and best_local_pos in surrogate_local_set:
+            best_source = "both"
+        elif best_local_pos in surrogate_local_set:
+            best_source = "surrogate"
+        else:
+            best_source = "dopt"
 
         region_best_fitness[int(r)] = float(evaluated_y[best_eval_pos])
         region_best_solution[int(r)] = best_global_idx
         region_best_source[int(r)] = best_source
         evaluated_per_region[int(r)] = evaluated_global.tolist()
+        dopt_evaluated_per_region[int(r)] = sel_global.tolist()
         surrogate_evaluated_per_region[int(r)] = members[surrogate_local].tolist()
         evaluated_indices.extend(evaluated_global.tolist())
 
@@ -499,6 +509,7 @@ def evaluate_regions_via_oracle(
         region_best_source,
         evaluated_indices,
         evaluated_per_region,
+        dopt_evaluated_per_region,
         surrogate_evaluated_per_region,
     )
 
@@ -626,6 +637,7 @@ def run_two_level_dopp(
         region_best_source_r1,
         evaluated_r1,
         evaluated_per_region_r1,
+        dopt_evaluated_per_region_r1,
         surrogate_evaluated_per_region_r1,
     ) = evaluate_regions_via_oracle(
         region_ids=round1_regions,
@@ -678,6 +690,7 @@ def run_two_level_dopp(
         region_best_source_r2,
         evaluated_r2,
         evaluated_per_region_r2,
+        dopt_evaluated_per_region_r2,
         surrogate_evaluated_per_region_r2,
     ) = evaluate_regions_via_oracle(
         region_ids=round2_regions,
@@ -779,6 +792,7 @@ def run_two_level_dopp(
             "region_best_source": region_best_source_r1,
             "evaluated_indices": evaluated_r1,
             "evaluated_per_region": evaluated_per_region_r1,
+            "dopt_evaluated_per_region": dopt_evaluated_per_region_r1,
             "surrogate_evaluated_per_region": surrogate_evaluated_per_region_r1,
         },
         "round2": {
@@ -792,6 +806,7 @@ def run_two_level_dopp(
             "region_best_source": region_best_source_r2,
             "evaluated_indices": evaluated_r2,
             "evaluated_per_region": evaluated_per_region_r2,
+            "dopt_evaluated_per_region": dopt_evaluated_per_region_r2,
             "surrogate_evaluated_per_region": surrogate_evaluated_per_region_r2,
         },
         "surrogate": {
