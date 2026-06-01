@@ -24,11 +24,46 @@ from algorithms.dopp.baseline_analysis_utils import (
 )
 
 
+DOPT_NONZERO_THRESHOLD = 1e-3
+
+
 def _x_region(bundle: Dict) -> np.ndarray:
     x_region = bundle.get("region_features", {}).get("X_region")
     if x_region is None:
         raise ValueError("Result bundle is missing region_features.X_region")
     return np.asarray(x_region, dtype=np.float64)
+
+
+def _round1_dopt_weights(bundle: Dict, n_regions: int) -> np.ndarray:
+    weights = bundle.get("round1", {}).get("weights")
+    out = np.full(n_regions, np.nan, dtype=np.float64)
+    if weights is None:
+        logging.warning("Result bundle is missing round1.weights; D-opt weights will be NaN.")
+        return out
+
+    raw = np.asarray(weights, dtype=np.float64).reshape(-1)
+    n_copy = min(n_regions, raw.size)
+    out[:n_copy] = raw[:n_copy]
+    if raw.size != n_regions:
+        logging.warning(
+            "round1.weights has length %d, but there are %d regions; truncated/padded with NaN.",
+            raw.size,
+            n_regions,
+        )
+    return out
+
+
+def _attach_dopt_weights(bundle: Dict, truth: pd.DataFrame) -> pd.DataFrame:
+    out = truth.copy()
+    weights = _round1_dopt_weights(bundle, len(out))
+    region_ids = out["region_id"].to_numpy(dtype=np.int64)
+    out["dopt_weight"] = weights[region_ids]
+    out["dopt_importance_rank"] = out["dopt_weight"].rank(
+        method="first",
+        ascending=False,
+        na_option="bottom",
+    )
+    return out
 
 
 def _truth_table(
@@ -249,6 +284,8 @@ def _top10_tables(eval_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         "true_label",
         "true_rank",
         "region_size",
+        "dopt_weight",
+        "dopt_importance_rank",
         "selected_in_round1",
         "selected_in_round2",
         "best_candidate_key_or_index_in_region",
@@ -261,6 +298,8 @@ def _top10_tables(eval_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         "predicted_label",
         "predicted_rank",
         "region_size",
+        "dopt_weight",
+        "dopt_importance_rank",
         "selected_in_round1",
         "selected_in_round2",
         "missed_by_predicted_top10",
@@ -299,6 +338,8 @@ def _compact_predicted_table(predicted_top: pd.DataFrame) -> pd.DataFrame:
             "true": predicted_top["true_label"],
             "true_rank": predicted_top["true_rank"],
             "size": predicted_top["region_size"],
+            "dopt_w": predicted_top["dopt_weight"],
+            "dopt_rank": predicted_top["dopt_importance_rank"],
             "in_coreset": _in_coreset_column(predicted_top),
             "selected": predicted_top.apply(_selection_label, axis=1),
             "best_candidate": predicted_top["best_candidate_key_or_index_in_region"],
@@ -317,6 +358,8 @@ def _compact_true_table(true_top: pd.DataFrame) -> pd.DataFrame:
             "pred": true_top["predicted_label"],
             "pred_rank": true_top["predicted_rank"],
             "missed": true_top["missed_by_predicted_top10"].map(_yes_no),
+            "dopt_w": true_top["dopt_weight"],
+            "dopt_rank": true_top["dopt_importance_rank"],
             "in_coreset": _in_coreset_column(true_top),
             "selected": true_top.apply(_selection_label, axis=1),
             "best_candidate": true_top["best_candidate_key_or_index_in_region"],
@@ -324,6 +367,62 @@ def _compact_true_table(true_top: pd.DataFrame) -> pd.DataFrame:
         }
     )
     return compact
+
+
+def _dopt_weight_markdown(
+    truth: pd.DataFrame,
+    round1_regions: Sequence[int],
+    round2_regions: Sequence[int],
+) -> str:
+    weights = truth["dopt_weight"].to_numpy(dtype=np.float64)
+    finite = weights[np.isfinite(weights)]
+    if finite.size == 0:
+        return "No saved Round-1 D-opt region weights were found in this result bundle."
+
+    nonzero = int(np.sum(finite > DOPT_NONZERO_THRESHOLD))
+    stat_rows = [
+        {"stat": "sum", "value": format_float(float(np.sum(finite)), digits=6)},
+        {
+            "stat": f"nonzero > {DOPT_NONZERO_THRESHOLD:g}",
+            "value": f"{nonzero} / {finite.size} ({format_pct(nonzero / finite.size)})",
+        },
+        {"stat": "min", "value": format_float(float(np.min(finite)), digits=6)},
+        {"stat": "p25", "value": format_float(float(np.percentile(finite, 25)), digits=6)},
+        {"stat": "median", "value": format_float(float(np.percentile(finite, 50)), digits=6)},
+        {"stat": "p75", "value": format_float(float(np.percentile(finite, 75)), digits=6)},
+        {"stat": "p90", "value": format_float(float(np.percentile(finite, 90)), digits=6)},
+        {"stat": "max", "value": format_float(float(np.max(finite)), digits=6)},
+    ]
+
+    selected = truth.copy()
+    selected["selected_in_round1"] = selected["region_id"].isin(set(round1_regions))
+    selected["selected_in_round2"] = selected["region_id"].isin(set(round2_regions))
+    top = selected[selected["dopt_weight"].notna()].nlargest(10, "dopt_weight")
+    top_table = pd.DataFrame(
+        {
+            "dopt_rank": top["dopt_importance_rank"],
+            "region": top["region_id"],
+            "dopt_w": top["dopt_weight"],
+            "true": top["true_label"],
+            "true_rank": top["true_rank"],
+            "size": top["region_size"],
+            "in_coreset": _in_coreset_column(top),
+            "selected": top.apply(_selection_label, axis=1),
+            "best_candidate": top["best_candidate_key_or_index_in_region"],
+        }
+    )
+
+    return "\n".join(
+        [
+            "Weight distribution:",
+            "",
+            _to_code_table(pd.DataFrame(stat_rows)),
+            "",
+            "Top D-opt-weight regions:",
+            "",
+            _to_code_table(top_table),
+        ]
+    )
 
 
 def _metrics_markdown(metrics: Sequence[Dict[str, object]]) -> str:
@@ -409,6 +508,10 @@ def _format_table_values(df: pd.DataFrame) -> pd.DataFrame:
                 out[col] = out[col].map(
                     lambda x: str(int(round(float(x)))) if pd.notna(x) else "nan"
                 )
+            elif col_name in {"dopt_w", "dopt_weight"}:
+                out[col] = out[col].map(
+                    lambda x: format_float(float(x), digits=6) if pd.notna(x) else "nan"
+                )
             else:
                 out[col] = out[col].map(
                     lambda x: format_float(float(x)) if pd.notna(x) else "nan"
@@ -464,7 +567,10 @@ def build_report(
     fitness_csv: Path,
 ) -> str:
     modes = ["observed", "oracle"] if region_label_mode == "both" else [region_label_mode]
-    truth = _truth_table(regions, y, candidate_keys)
+    truth = _attach_dopt_weights(
+        bundle,
+        _truth_table(regions, y, candidate_keys),
+    )
 
     mode_results: List[Tuple[str, pd.DataFrame, Dict[str, object]]] = []
     for mode in modes:
@@ -494,6 +600,8 @@ def build_report(
         "- Lower predicted label and lower true label both mean better.",
         "- True oracle region label is `min(candidate fitness)` inside the region.",
         "- `true_rank` is the oracle rank among all regions; `in_coreset` marks Round-1 selected regions.",
+        "- `dopt_w` is the Round-1 D-optimal design weight of the region.",
+        "- `dopt_rank` ranks D-opt importance in reverse weight order: rank 1 is the highest-weight region.",
         "- Observed region label is the best evaluated fitness found inside a Round-1 selected region.",
         "- Oracle-label mode is analysis-only and is used as an upper-bound diagnostic for label noise.",
         "- All-region oracle training is an in-sample model-capacity diagnostic; it uses all true region labels and does not use D-opt coreset selection.",
@@ -503,6 +611,10 @@ def build_report(
         f"- Regions: **{len(regions)}**.",
         f"- Round-1 selected regions: **{len(round1)}**.",
         f"- Round-2 newly evaluated regions in saved run: **{len(round2)}**.",
+        "",
+        "## D-Opt Region Weight Summary",
+        "",
+        _dopt_weight_markdown(truth, round1, round2),
         "",
         "## Metrics Summary",
         "",

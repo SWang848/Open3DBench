@@ -189,12 +189,15 @@ def truth_for_regions(
                     "size": 0,
                     "true_best_index": -1,
                     "true_best_fitness": np.nan,
+                    "true_worst_fitness": np.nan,
+                    "median_fitness": np.nan,
                     "true_best_rank": np.nan,
                     "median_rank": np.nan,
                     "p10_rank": np.nan,
                     "p25_rank": np.nan,
                     "p75_rank": np.nan,
                     "p90_rank": np.nan,
+                    "fitness_variance": np.nan,
                     "worst_rank": np.nan,
                 }
             )
@@ -202,18 +205,23 @@ def truth_for_regions(
 
         member_y = y[members]
         member_ranks = ranks[members]
+        p10_rank = float(np.percentile(member_ranks, 10))
+        p90_rank = float(np.percentile(member_ranks, 90))
         best_pos = int(np.argmin(member_y))
         row: Dict[str, object] = {
             "region_id": r,
             "size": int(members.size),
             "true_best_index": int(members[best_pos]),
             "true_best_fitness": float(member_y[best_pos]),
+            "true_worst_fitness": float(np.max(member_y)),
+            "median_fitness": float(np.median(member_y)),
             "true_best_rank": int(member_ranks[best_pos]),
             "median_rank": float(np.median(member_ranks)),
-            "p10_rank": float(np.percentile(member_ranks, 10)),
+            "p10_rank": p10_rank,
             "p25_rank": float(np.percentile(member_ranks, 25)),
             "p75_rank": float(np.percentile(member_ranks, 75)),
-            "p90_rank": float(np.percentile(member_ranks, 90)),
+            "p90_rank": p90_rank,
+            "fitness_variance": float(np.var(member_y)),
             "worst_rank": int(member_ranks.max()),
         }
         for k in top_k_truth:
