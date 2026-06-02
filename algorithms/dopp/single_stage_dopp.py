@@ -19,7 +19,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 
-from algorithms.dopp.d_opt import frank_wolfe_d_optimal, qr_rank_cleanup
+from algorithms.dopp.d_opt import qr_rank_cleanup, silvey_titterington_torsney_d_optimal
 from algorithms.dopp.loaders import load_features_from_file, load_fitness_scores_from_csv
 
 
@@ -150,9 +150,15 @@ def _build_design_features(
 
     original_dim = int(X_design_full.shape[1])
     X_design, kept_columns = qr_rank_cleanup(X_design_full)
+    # D-opt weights are invariant to full-rank linear transforms of the feature
+    # columns. Using an orthonormal basis keeps the no-PCA path numerically
+    # positive definite while preserving the same design problem.
+    X_design, _ = np.linalg.qr(X_design, mode="reduced")
+    X_design = X_design * np.sqrt(X_design.shape[0])
     pca_info["design_dim_before_cleanup"] = original_dim
     pca_info["design_dim"] = int(X_design.shape[1])
     pca_info["kept_columns"] = kept_columns
+    pca_info["orthonormalized_after_cleanup"] = True
     return X_design, pca_info
 
 
@@ -211,9 +217,9 @@ def run_single_stage_dopp(
     dopt_budget: int,
     prediction_budget: int,
     pca_components: int,
-    fw_tol: float,
-    fw_step_scheme: str,
-    fw_epsilon: float,
+    stt_tol: float,
+    stt_epsilon: float,
+    stt_max_iter: Optional[int],
     random_state: int,
     top_k_truth: Sequence[int],
     reference_budget: Dict[str, Optional[int]],
@@ -232,12 +238,12 @@ def run_single_stage_dopp(
         prediction_budget,
     )
 
-    weights, fw_history = frank_wolfe_d_optimal(
+    weights, stt_history = silvey_titterington_torsney_d_optimal(
         X_design,
-        tol=fw_tol,
-        step_scheme=fw_step_scheme,
-        epsilon=fw_epsilon,
-        verbose=False,
+        tol=stt_tol,
+        epsilon=stt_epsilon,
+        verbose=True,
+        max_iter=stt_max_iter,
     )
     weights = np.asarray(weights, dtype=np.float64)
     dopt_indices = _top_weight_indices(weights, dopt_budget)
@@ -274,16 +280,17 @@ def run_single_stage_dopp(
             "dopt_budget": int(dopt_budget),
             "prediction_budget": int(prediction_budget),
             "pca_components": int(feature_space["pca_components_used"]),
-            "fw_tol": float(fw_tol),
-            "fw_step_scheme": fw_step_scheme,
-            "fw_epsilon": float(fw_epsilon),
+            "dopt_method": "stt",
+            "stt_tol": float(stt_tol),
+            "stt_epsilon": float(stt_epsilon),
+            "stt_max_iter": None if stt_max_iter is None else int(stt_max_iter),
             "random_state": int(random_state),
             "reference_budget": reference_budget,
         },
         "feature_space": feature_space,
         "dopt": {
             "weights": weights,
-            "fw_history": fw_history,
+            "stt_history": stt_history,
             "selected_indices": dopt_indices.tolist(),
             "selected_keys": [candidate_keys[i] for i in dopt_indices.tolist()],
         },
@@ -353,14 +360,41 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--metrics", type=str, nargs="+", default=None)
     parser.add_argument("--pca-components", type=int, default=20)
-    parser.add_argument("--fw-tol", type=float, default=1e-2)
+    parser.add_argument(
+        "--stt-tol",
+        "--fw-tol",
+        dest="stt_tol",
+        type=float,
+        default=1e-2,
+        help="Tolerance for STT convergence: |g_star - d| <= tol.",
+    )
     parser.add_argument(
         "--fw-step-scheme",
         type=str,
         default="1/t",
-        choices=["1/t", "line_search"],
+        choices=["1/t", "line_search", "d_opt"],
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--fw-epsilon", type=float, default=0.0)
+    parser.add_argument(
+        "--stt-epsilon",
+        "--fw-epsilon",
+        dest="stt_epsilon",
+        type=float,
+        default=0,
+        help="Jitter for the STT information matrix.",
+    )
+    parser.add_argument(
+        "--stt-max-iter",
+        "--fw-max-iter",
+        dest="stt_max_iter",
+        type=int,
+        default=None,
+        help=(
+            "Optional STT safety guard. If reached before "
+            "convergence, the run raises an error instead of returning a "
+            "partial design."
+        ),
+    )
     parser.add_argument("--random-state", type=int, default=0)
     parser.add_argument("--top-k-truth", type=int, nargs="+", default=(10, 20, 50, 100))
     parser.add_argument(
@@ -419,9 +453,9 @@ def main() -> None:
         dopt_budget=dopt_budget,
         prediction_budget=prediction_budget,
         pca_components=args.pca_components,
-        fw_tol=args.fw_tol,
-        fw_step_scheme=args.fw_step_scheme,
-        fw_epsilon=args.fw_epsilon,
+        stt_tol=args.stt_tol,
+        stt_epsilon=args.stt_epsilon,
+        stt_max_iter=args.stt_max_iter,
         random_state=args.random_state,
         top_k_truth=args.top_k_truth,
         reference_budget=reference_budget,

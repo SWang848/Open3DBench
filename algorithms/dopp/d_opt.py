@@ -3,7 +3,7 @@ import logging
 import math
 from pathlib import Path
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import scipy.linalg as la
@@ -106,7 +106,14 @@ def scipy_d_optimal(X, epsilon=1e-8, verbose=False):
     return w_opt, result
 
 
-def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=False):
+def frank_wolfe_d_optimal(
+    X,
+    tol=1e-8,
+    step_scheme="1/t",
+    epsilon=1e-8,
+    verbose=False,
+    max_iter: Optional[int] = None,
+):
     """
     Frank-Wolfe for D-optimal design (approximate design on simplex of size N).
 
@@ -116,11 +123,16 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
         tol : float
             Stop when |g_star - d| <= tol, where g_star = max_i x_i^T M(w)^{-1} x_i.
         step_scheme : str
-            "1/t" for gamma_t = 2/(t+2) or "line_search" (simple backtracking).
+            "1/t" for gamma_t = 2/(t+2), "line_search" for simple
+            backtracking, or "d_opt" for the D-optimal-design exact vertex
+            step.
         epsilon : float
             Jitter added to M for numerical stability.
         verbose : bool
             If True, prints objective occasionally.
+        max_iter : Optional[int]
+            Optional safety guard. If reached before the equivalence condition,
+            the function raises instead of returning a partial design.
 
     Returns:
         w : np.ndarray, shape (N,)
@@ -131,7 +143,7 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
     N, d = X.shape
     # Start with uniform design
     w = np.ones(N) / N
-    history = {"f": [], "g_star": []}
+    history = {"f": [], "g_star": [], "step_size": []}
 
     def compute_M(w):
         # M = X^T diag(w) X, computed without forming a dense N x N matrix.
@@ -140,12 +152,29 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
         M += epsilon * np.eye(d)
         return M
 
+    if max_iter is not None and max_iter <= 0:
+        raise ValueError(f"max_iter must be positive or None, got {max_iter}")
+
+    stop_reason = "not_converged"
     t = 0
     while True:
+        if max_iter is not None and t >= max_iter:
+            last_g = history["g_star"][-1] if history["g_star"] else float("nan")
+            raise RuntimeError(
+                "D-opt Frank-Wolfe reached the optional safety max_iter="
+                f"{max_iter} before convergence: g_star={last_g:.4f}, "
+                f"d={d}, |g_star-d|={abs(last_g - d):.4f}, tol={tol}."
+            )
+
         M = compute_M(w)
 
         # Objective: f(w) = -log det(M)
         sign, logdet = np.linalg.slogdet(M)
+        if sign <= 0:
+            raise np.linalg.LinAlgError(
+                "D-opt information matrix is not positive definite. "
+                "Try reducing/conditioning the feature matrix or setting epsilon > 0."
+            )
         f = -logdet
         history["f"].append(f)
 
@@ -165,10 +194,16 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
         history["g_star"].append(g_star)
 
         if abs(g_star - d) <= tol:
+            stop_reason = "equivalence_tolerance"
             break
 
         if verbose and t % 20 == 0:
-            print(f"[D-opt FW] iter={t}, f=-logdet={f:.4f}, |(g_star - d)|={abs(g_star - d):.4f}")
+            eigvals = np.linalg.eigvalsh(M)
+            print(
+                f"[D-opt FW] iter={t}, f=-logdet={f:.4f}, "
+                f"|g_star - d|={abs(g_star - d):.4f}, "
+                f"eig_min={eigvals.min():.4e}, eig_max={eigvals.max():.4e}"
+            )
 
         # s = linprog(grad, A_eq=np.ones((1,N)), b_eq=np.ones(1))
         # s=s.x
@@ -183,17 +218,26 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
         s[i_star] = 1.0
 
         # Step size
-        if step_scheme == "1/t":
+        if step_scheme == "d_opt" and epsilon == 0 and g_star > d and g_star > 1:
+            # Exact maximizer of det((1-gamma)M + gamma x_i x_i^T)
+            # along the chosen vertex direction.
+            trial_gamma = (g_star - d) / (d * (g_star - 1.0))
+        elif step_scheme == "1/t":
             # Keep gamma < 1 so a strictly positive start remains in the interior.
             trial_gamma = 2.0 / (t + 3.0)
-        else:
+        elif step_scheme == "line_search" or (step_scheme == "d_opt" and epsilon != 0):
             # Start from a full FW step and backtrack until the objective improves.
             trial_gamma = 1.0
+        else:
+            raise ValueError(f"Unknown step_scheme: {step_scheme!r}")
 
         gamma = 0.0
         f_next = f
         w_next = w
+        trial_gamma = float(np.clip(trial_gamma, 0.0, 1.0 - 1e-12))
         for _ in range(50):
+            if trial_gamma <= 0.0:
+                break
             candidate_w = (1 - trial_gamma) * w + trial_gamma * s
             M_trial = compute_M(candidate_w)
             sign_trial, logdet_trial = np.linalg.slogdet(M_trial)
@@ -208,22 +252,137 @@ def frank_wolfe_d_optimal(X, tol=1e-8, step_scheme="1/t", epsilon=1e-8, verbose=
 
         improvement = f - f_next
         if improvement <= 0:
-            break
+            raise RuntimeError(
+                "D-opt Frank-Wolfe could not improve the log-det objective "
+                f"before convergence: g_star={g_star:.4f}, d={d}, "
+                f"|g_star-d|={abs(g_star - d):.4f}, tol={tol}."
+            )
 
         # Update
         w = w_next
+        history["step_size"].append(float(gamma))
         t += 1
 
     # logging.info(f"det value:{np.exp(logdet_trial):.4f}")
     A = compute_M(w)
-
-    # Optional small regularization if A is ill-conditioned
     A_reg = A if epsilon > 0 else A + 1e-8 * np.eye(A.shape[0])
     Y = np.linalg.solve(A_reg, X.T)      # shape (d, N)
     q = np.sum(X * Y.T, axis=1)
     g_star = np.max(q)
-    logging.info(f"g_star value:{g_star:.4f}")
+    history["final_g_star"] = float(g_star)
+    history["dimension"] = int(d)
+    history["stop_reason"] = stop_reason
+    history["converged"] = bool(abs(g_star - d) <= tol)
+    logging.info(
+        "g_star value: %.4f (d=%d, |g_star-d|=%.4f, stop=%s)",
+        g_star,
+        d,
+        abs(g_star - d),
+        stop_reason,
+    )
     
+    return w, history
+
+
+def silvey_titterington_torsney_d_optimal(
+    X,
+    tol=1e-8,
+    epsilon=1e-8,
+    verbose=False,
+    max_iter: Optional[int] = None,
+):
+    """
+    Silvey-Titterington-Torsney multiplicative update for D-optimal design.
+
+    The update is
+
+        w_i <- w_i * (x_i^T M(w)^-1 x_i) / d
+
+    where d is the feature dimension and M(w)=X^T diag(w) X. Starting from
+    uniform positive weights keeps all design weights positive, and the update
+    preserves the simplex exactly when epsilon=0. With epsilon>0, weights are
+    renormalized after each update.
+    """
+    N, d = X.shape
+    w = np.ones(N, dtype=np.float64) / N
+    history = {"f": [], "g_star": [], "min_q": [], "weight_delta_l1": []}
+
+    def compute_M(weights):
+        WX = weights[:, None] * X
+        M = X.T @ WX
+        M += epsilon * np.eye(d)
+        return M
+
+    if max_iter is not None and max_iter <= 0:
+        raise ValueError(f"max_iter must be positive or None, got {max_iter}")
+
+    stop_reason = "not_converged"
+    t = 0
+    while True:
+        if max_iter is not None and t >= max_iter:
+            last_g = history["g_star"][-1] if history["g_star"] else float("nan")
+            raise RuntimeError(
+                "D-opt STT reached the optional safety max_iter="
+                f"{max_iter} before convergence: g_star={last_g:.4f}, "
+                f"d={d}, |g_star-d|={abs(last_g - d):.4f}, tol={tol}."
+            )
+
+        M = compute_M(w)
+        sign, logdet = np.linalg.slogdet(M)
+        if sign <= 0:
+            raise np.linalg.LinAlgError(
+                "D-opt information matrix is not positive definite. "
+                "Try reducing/conditioning the feature matrix or setting epsilon > 0."
+            )
+
+        Y = np.linalg.solve(M, X.T)
+        q = np.sum(X * Y.T, axis=1)
+        g_star = float(np.max(q))
+        min_q = float(np.min(q))
+
+        history["f"].append(float(-logdet))
+        history["g_star"].append(g_star)
+        history["min_q"].append(min_q)
+
+        if abs(g_star - d) <= tol:
+            stop_reason = "equivalence_tolerance"
+            break
+
+        if verbose and t % 20 == 0:
+            eigvals = np.linalg.eigvalsh(M)
+            print(
+                f"[D-opt STT] iter={t}, f=-logdet={-logdet:.4f}, "
+                f"|g_star - d|={abs(g_star - d):.4f}, "
+                f"q_min={min_q:.4f}, "
+                f"eig_min={eigvals.min():.4e}, eig_max={eigvals.max():.4e}"
+            )
+
+        next_w = w * (q / d)
+        weight_sum = float(next_w.sum())
+        if weight_sum <= 0.0 or not np.isfinite(weight_sum):
+            raise RuntimeError("D-opt STT produced invalid non-positive weight sum.")
+        next_w /= weight_sum
+
+        delta_l1 = float(np.sum(np.abs(next_w - w)))
+        history["weight_delta_l1"].append(delta_l1)
+        w = next_w
+        t += 1
+
+    A = compute_M(w)
+    Y = np.linalg.solve(A, X.T)
+    q = np.sum(X * Y.T, axis=1)
+    g_star = float(np.max(q))
+    history["final_g_star"] = g_star
+    history["dimension"] = int(d)
+    history["stop_reason"] = stop_reason
+    history["converged"] = bool(abs(g_star - d) <= tol)
+    logging.info(
+        "STT g_star value: %.4f (d=%d, |g_star-d|=%.4f, stop=%s)",
+        g_star,
+        d,
+        abs(g_star - d),
+        stop_reason,
+    )
     return w, history
 
 
@@ -310,12 +469,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("features_file", type=Path, help="Path to standardized feature bundle .npy file")
     parser.add_argument("--fitness-csv", type=Path, default=None, help="Path to CSV file with fitness scores (from get_metrics.py)")
     parser.add_argument("--feature-type", type=str, default="original", choices=["polynomial", "original"], help="Type of features to use for D-optimal design")
-    parser.add_argument("--method", type=str, default="frank_wolfe", choices=["frank_wolfe", "scipy"], 
-                       help="Optimization method: 'frank_wolfe' or 'scipy' (default: scipy)")
+    parser.add_argument(
+        "--method",
+        type=str,
+        default="frank_wolfe",
+        choices=["frank_wolfe", "stt", "scipy"],
+        help="Optimization method: 'frank_wolfe', 'stt', or 'scipy'",
+    )
     parser.add_argument("--tol", type=float, default=1e-2, help="Tolerance for the stopping rule |g_star - d| <= tol")
-    parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search"], 
+    parser.add_argument("--step-scheme", type=str, default="1/t", choices=["1/t", "line_search", "d_opt"], 
                        help="Step size scheme (only used for Frank-Wolfe method)")
     parser.add_argument("--epsilon", type=float, default=0.0, help="Jitter for numerical stability")
+    parser.add_argument(
+        "--max-iter",
+        type=int,
+        default=None,
+        help=(
+            "Optional Frank-Wolfe/STT safety guard. If reached before "
+            "convergence, the run raises an error instead of returning a "
+            "partial design."
+        ),
+    )
     parser.add_argument("--output", type=Path, default=None, help="Path to save D-optimal results. Default: evaluation/regression_results/{case_name}/d_optimal_results.npy")
     parser.add_argument("--top-k", type=float, default=None, help="Select top K percentage candidates by weight")
     parser.add_argument("--threshold", type=float, default=1e-6, help="Select candidates with weight >= threshold")
@@ -372,6 +546,21 @@ def main() -> None:
         )
         f_sci = d_opt_objective(X, w, epsilon=args.epsilon)
         logging.info(f"  scipy-based objective: {f_sci:.4f}")
+    elif args.method == "stt":
+        logging.info("Running Silvey-Titterington-Torsney D-optimal design algorithm...")
+        logging.info(f"  Tol: {args.tol}")
+        logging.info(f"  Epsilon: {args.epsilon}")
+
+        w, history = silvey_titterington_torsney_d_optimal(
+            X,
+            tol=args.tol,
+            epsilon=args.epsilon,
+            verbose=args.verbose,
+            max_iter=args.max_iter,
+        )
+
+        f_stt = d_opt_objective(X, w, epsilon=args.epsilon)
+        logging.info(f"  STT objective: {f_stt:.4f}")
     else:  # frank_wolfe
         logging.info("Running Frank-Wolfe D-optimal design algorithm...")
         logging.info(f"  Tol: {args.tol}")
@@ -384,6 +573,7 @@ def main() -> None:
             step_scheme=args.step_scheme,
             epsilon=args.epsilon,
             verbose=args.verbose,
+            max_iter=args.max_iter,
         )
         
         f_fw = d_opt_objective(X, w, epsilon=args.epsilon)
@@ -422,8 +612,9 @@ def main() -> None:
         "algorithm_params": {
             "method": args.method,
             "tol": args.tol,
-            "step_scheme": args.step_scheme,
-            "epsilon": args.epsilon
+            "step_scheme": args.step_scheme if args.method == "frank_wolfe" else None,
+            "epsilon": args.epsilon,
+            "max_iter": args.max_iter,
         },
     }
     

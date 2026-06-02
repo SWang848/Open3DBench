@@ -887,7 +887,7 @@ def parse_args() -> argparse.Namespace:
         "--fw-step-scheme",
         type=str,
         default="1/t",
-        choices=["1/t", "line_search"],
+        choices=["1/t", "line_search", "d_opt"],
     )
     parser.add_argument("--fw-epsilon", type=float, default=0.0)
     parser.add_argument("--random-state", type=int, default=0)
