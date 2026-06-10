@@ -8,7 +8,7 @@ surrogates to propose additional candidates inside selected regions, trains a
 region-level linear surrogate on the labeled regions, and uses it to pick a
 second batch of regions (Round 2).
 
-The implementation reuses the existing ``frank_wolfe_d_optimal`` /
+The implementation reuses the existing ``silvey_titterington_torsney_d_optimal`` /
 ``select_candidates_by_weights`` solvers from ``algorithms.dopp.d_opt`` and
 shared data-loading helpers from ``algorithms.dopp.loaders``.
 """
@@ -31,8 +31,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 
 from algorithms.dopp.d_opt import (
-    frank_wolfe_d_optimal,
     select_candidates_by_weights,
+    silvey_titterington_torsney_d_optimal,
 )
 from algorithms.dopp.loaders import load_features_from_file, load_fitness_scores_from_csv
 
@@ -354,20 +354,20 @@ def select_top_regions_by_weight(
 def inner_dopt_select(
     X_region_solutions: np.ndarray,
     inner_top_k_frac: float,
-    fw_tol: float,
-    fw_step_scheme: str,
-    fw_epsilon: float,
+    stt_tol: float,
+    stt_epsilon: float,
+    stt_max_iter: Optional[int],
 ) -> np.ndarray:
-    """Run Frank-Wolfe inside a region and return selected local indices."""
+    """Run STT D-opt inside a region and return selected local indices."""
     if X_region_solutions.shape[0] == 1:
         return np.array([0], dtype=np.int64)
 
-    w, _ = frank_wolfe_d_optimal(
+    w, _ = silvey_titterington_torsney_d_optimal(
         X_region_solutions,
-        tol=fw_tol,
-        step_scheme=fw_step_scheme,
-        epsilon=fw_epsilon,
-        verbose=False,
+        tol=stt_tol,
+        epsilon=stt_epsilon,
+        verbose=True,
+        max_iter=stt_max_iter,
     )
     sel_inner, _ = select_candidates_by_weights(w, top_k=inner_top_k_frac)
     return np.asarray(sel_inner, dtype=np.int64)
@@ -393,9 +393,9 @@ def evaluate_regions_via_oracle(
     inner_pca_components: int,
     inner_top_k_frac: float,
     inner_prediction_top_k: int,
-    fw_tol: float,
-    fw_step_scheme: str,
-    fw_epsilon: float,
+    stt_tol: float,
+    stt_epsilon: float,
+    stt_max_iter: Optional[int],
     random_state: int,
 ) -> Tuple[
     Dict[int, float],
@@ -452,9 +452,9 @@ def evaluate_regions_via_oracle(
         sel_local = inner_dopt_select(
             X_r,
             inner_top_k_frac=inner_top_k_frac,
-            fw_tol=fw_tol,
-            fw_step_scheme=fw_step_scheme,
-            fw_epsilon=fw_epsilon,
+            stt_tol=stt_tol,
+            stt_epsilon=stt_epsilon,
+            stt_max_iter=stt_max_iter,
         )
         sel_global = members[sel_local]
         y_sel = y[sel_global]
@@ -541,9 +541,9 @@ def run_two_level_dopp(
     round2_top_k: int,
     inner_top_k_frac: float,
     inner_prediction_top_k: int,
-    fw_tol: float,
-    fw_step_scheme: str,
-    fw_epsilon: float,
+    stt_tol: float,
+    stt_epsilon: float,
+    stt_max_iter: Optional[int],
     random_state: int,
     top_k_truth: Tuple[int, ...] = (10, 20),
 ) -> Dict:
@@ -615,16 +615,16 @@ def run_two_level_dopp(
 
     # Step 6: Round 1 region-level D-opt.
     logging.info(
-        "Round 1: Frank-Wolfe D-opt on region features (K=%d, d=%d)",
+        "Round 1: STT D-opt on region features (K=%d, d=%d)",
         X_region.shape[0],
         X_region.shape[1],
     )
-    w_region, fw_history_region = frank_wolfe_d_optimal(
+    w_region, stt_history_region = silvey_titterington_torsney_d_optimal(
         X_region,
-        tol=fw_tol,
-        step_scheme=fw_step_scheme,
-        epsilon=fw_epsilon,
+        tol=stt_tol,
+        epsilon=stt_epsilon,
         verbose=True,
+        max_iter=stt_max_iter,
     )
     region_top_k_eff = min(region_top_k, n_regions)
     round1_regions = select_top_regions_by_weight(w_region, top_k=region_top_k_eff)
@@ -647,9 +647,9 @@ def run_two_level_dopp(
         inner_pca_components=pca_dim,
         inner_top_k_frac=inner_top_k_frac,
         inner_prediction_top_k=inner_prediction_top_k,
-        fw_tol=fw_tol,
-        fw_step_scheme=fw_step_scheme,
-        fw_epsilon=fw_epsilon,
+        stt_tol=stt_tol,
+        stt_epsilon=stt_epsilon,
+        stt_max_iter=stt_max_iter,
         random_state=random_state,
     )
 
@@ -700,9 +700,9 @@ def run_two_level_dopp(
         inner_pca_components=pca_dim,
         inner_top_k_frac=inner_top_k_frac,
         inner_prediction_top_k=inner_prediction_top_k,
-        fw_tol=fw_tol,
-        fw_step_scheme=fw_step_scheme,
-        fw_epsilon=fw_epsilon,
+        stt_tol=stt_tol,
+        stt_epsilon=stt_epsilon,
+        stt_max_iter=stt_max_iter,
         random_state=random_state,
     )
 
@@ -768,9 +768,10 @@ def run_two_level_dopp(
             "inner_top_k_frac": inner_top_k_frac,
             "inner_prediction_top_k": inner_prediction_top_k,
             "inner_dopt_feature_space": "region_local_standardized_pca",
-            "fw_tol": fw_tol,
-            "fw_step_scheme": fw_step_scheme,
-            "fw_epsilon": fw_epsilon,
+            "dopt_method": "stt",
+            "stt_tol": stt_tol,
+            "stt_epsilon": stt_epsilon,
+            "stt_max_iter": None if stt_max_iter is None else int(stt_max_iter),
             "random_state": random_state,
         },
         "clustering": {
@@ -785,7 +786,7 @@ def run_two_level_dopp(
         },
         "round1": {
             "weights": w_region,
-            "fw_history": fw_history_region,
+            "stt_history": stt_history_region,
             "selected_regions": round1_regions,
             "region_best_fitness": region_best_fitness_r1,
             "region_best_solution": region_best_solution_r1,
@@ -838,7 +839,7 @@ def run_two_level_dopp(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Two-level DOPP baseline (balanced regions + two-round D-opt)."
+        description="Two-level DOPP baseline (balanced regions + two-round STT D-opt)."
     )
     parser.add_argument(
         "features_file",
@@ -882,14 +883,40 @@ def parse_args() -> argparse.Namespace:
             "evaluation."
         ),
     )
-    parser.add_argument("--fw-tol", type=float, default=1e-2)
+    parser.add_argument(
+        "--stt-tol",
+        "--fw-tol",
+        dest="stt_tol",
+        type=float,
+        default=1e-2,
+        help="Tolerance for STT convergence: |g_star - d| <= tol.",
+    )
     parser.add_argument(
         "--fw-step-scheme",
         type=str,
         default="1/t",
         choices=["1/t", "line_search", "d_opt"],
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--fw-epsilon", type=float, default=0.0)
+    parser.add_argument(
+        "--stt-epsilon",
+        "--fw-epsilon",
+        dest="stt_epsilon",
+        type=float,
+        default=0.0,
+        help="Jitter for the STT information matrix.",
+    )
+    parser.add_argument(
+        "--stt-max-iter",
+        "--fw-max-iter",
+        dest="stt_max_iter",
+        type=int,
+        default=None,
+        help=(
+            "Optional STT safety guard. If reached before convergence, the "
+            "run raises an error instead of returning a partial design."
+        ),
+    )
     parser.add_argument("--random-state", type=int, default=0)
     parser.add_argument(
         "--output",
@@ -948,9 +975,9 @@ def main() -> None:
         round2_top_k=args.round2_top_k,
         inner_top_k_frac=args.inner_top_k_frac,
         inner_prediction_top_k=args.inner_prediction_top_k,
-        fw_tol=args.fw_tol,
-        fw_step_scheme=args.fw_step_scheme,
-        fw_epsilon=args.fw_epsilon,
+        stt_tol=args.stt_tol,
+        stt_epsilon=args.stt_epsilon,
+        stt_max_iter=args.stt_max_iter,
         random_state=args.random_state,
     )
 

@@ -462,7 +462,12 @@ def main() -> None:
     )
     results["feature_metadata"] = feature_metadata
 
-    output_path = out_dir / "single_stage_dopp_results.npy"
+    output_name = (
+        "single_stage_dopp_results_with_pca.npy"
+        if int(args.pca_components) > 0
+        else "single_stage_dopp_results.npy"
+    )
+    output_path = out_dir / output_name
     np.save(output_path, results, allow_pickle=True)
     logging.info("Saved single-stage DOPP results to %s", output_path)
 

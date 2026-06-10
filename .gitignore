@@ -98,6 +98,7 @@ Thumbs.db
 *.tar
 *.gz
 *.zip
+*.pdf
 
 # Third-party build artifacts
 Place-3D/thirdparty/*/build/
@@ -106,9 +107,20 @@ OpenROAD-3D/thirdparty/*/build/
 OpenROAD-3D/thirdparty/*/install/
 
 script
+
 # Keep only these specific files tracked:
 # - Source code files (.py, .cpp, .h, .hpp, .c, .tcl, .sh)
 # - Configuration files (.json, .yaml, .yml, .toml, .cfg)
 # - Documentation files (.md, .txt, .rst)
 # - Scripts (.sh, .py, .tcl)
 # - Makefiles and CMakeLists.txt
+
+
+# Agents generated files
+.aris/
+.claude/
+.codex/
+.agents/
+refine-logs/
+idea-stage/
+AGENTS.md

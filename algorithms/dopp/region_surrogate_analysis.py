@@ -285,7 +285,6 @@ def _top10_tables(eval_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         "true_rank",
         "region_size",
         "dopt_weight",
-        "dopt_importance_rank",
         "selected_in_round1",
         "selected_in_round2",
         "best_candidate_key_or_index_in_region",
@@ -299,7 +298,6 @@ def _top10_tables(eval_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         "predicted_rank",
         "region_size",
         "dopt_weight",
-        "dopt_importance_rank",
         "selected_in_round1",
         "selected_in_round2",
         "missed_by_predicted_top10",
@@ -329,43 +327,63 @@ def _in_coreset_column(table: pd.DataFrame) -> pd.Series:
     return table["selected_in_round1"].map(_yes_no)
 
 
-def _compact_predicted_table(predicted_top: pd.DataFrame) -> pd.DataFrame:
-    compact = pd.DataFrame(
+def _compact_predicted_table(
+    predicted_top: pd.DataFrame,
+    include_dopt_context: bool = True,
+) -> pd.DataFrame:
+    columns = {
+        "pred_rank": predicted_top["predicted_rank"],
+        "region": predicted_top["region_id"],
+        "pred": predicted_top["predicted_label"],
+        "true": predicted_top["true_label"],
+        "true_rank": predicted_top["true_rank"],
+        "size": predicted_top["region_size"],
+    }
+    if include_dopt_context:
+        columns.update(
+            {
+                "dopt_w": predicted_top["dopt_weight"],
+                "in_coreset": _in_coreset_column(predicted_top),
+                "selected": predicted_top.apply(_selection_label, axis=1),
+            }
+        )
+    columns.update(
         {
-            "pred_rank": predicted_top["predicted_rank"],
-            "region": predicted_top["region_id"],
-            "pred": predicted_top["predicted_label"],
-            "true": predicted_top["true_label"],
-            "true_rank": predicted_top["true_rank"],
-            "size": predicted_top["region_size"],
-            "dopt_w": predicted_top["dopt_weight"],
-            "dopt_rank": predicted_top["dopt_importance_rank"],
-            "in_coreset": _in_coreset_column(predicted_top),
-            "selected": predicted_top.apply(_selection_label, axis=1),
             "best_candidate": predicted_top["best_candidate_key_or_index_in_region"],
             "best_candidate_true": predicted_top["best_candidate_true_label"],
         }
     )
+    compact = pd.DataFrame(columns)
     return compact
 
 
-def _compact_true_table(true_top: pd.DataFrame) -> pd.DataFrame:
-    compact = pd.DataFrame(
+def _compact_true_table(
+    true_top: pd.DataFrame,
+    include_dopt_context: bool = True,
+) -> pd.DataFrame:
+    columns = {
+        "true_rank": true_top["true_rank"],
+        "region": true_top["region_id"],
+        "true": true_top["true_label"],
+        "pred": true_top["predicted_label"],
+        "pred_rank": true_top["predicted_rank"],
+        "missed": true_top["missed_by_predicted_top10"].map(_yes_no),
+    }
+    if include_dopt_context:
+        columns.update(
+            {
+                "dopt_w": true_top["dopt_weight"],
+                "in_coreset": _in_coreset_column(true_top),
+                "selected": true_top.apply(_selection_label, axis=1),
+            }
+        )
+    columns.update(
         {
-            "true_rank": true_top["true_rank"],
-            "region": true_top["region_id"],
-            "true": true_top["true_label"],
-            "pred": true_top["predicted_label"],
-            "pred_rank": true_top["predicted_rank"],
-            "missed": true_top["missed_by_predicted_top10"].map(_yes_no),
-            "dopt_w": true_top["dopt_weight"],
-            "dopt_rank": true_top["dopt_importance_rank"],
-            "in_coreset": _in_coreset_column(true_top),
-            "selected": true_top.apply(_selection_label, axis=1),
             "best_candidate": true_top["best_candidate_key_or_index_in_region"],
             "best_candidate_true": true_top["best_candidate_true_label"],
         }
     )
+    compact = pd.DataFrame(columns)
     return compact
 
 
@@ -400,7 +418,6 @@ def _dopt_weight_markdown(
     top = selected[selected["dopt_weight"].notna()].nlargest(10, "dopt_weight")
     top_table = pd.DataFrame(
         {
-            "dopt_rank": top["dopt_importance_rank"],
             "region": top["region_id"],
             "dopt_w": top["dopt_weight"],
             "true": top["true_label"],
@@ -532,6 +549,7 @@ def _to_code_table(df: pd.DataFrame) -> str:
 
 def _mode_section(mode: str, eval_df: pd.DataFrame, summary: Dict[str, object]) -> str:
     predicted_top, true_top = _top10_tables(eval_df)
+    include_dopt_context = mode != "all_region_oracle"
     if mode == "observed":
         mode_label = "Observed-Label Surrogate"
     elif mode == "oracle":
@@ -546,11 +564,21 @@ def _mode_section(mode: str, eval_df: pd.DataFrame, summary: Dict[str, object]) 
         "",
         "### Predicted Top-10 Regions",
         "",
-        _to_code_table(_compact_predicted_table(predicted_top)),
+        _to_code_table(
+            _compact_predicted_table(
+                predicted_top,
+                include_dopt_context=include_dopt_context,
+            )
+        ),
         "",
         "### True Top-10 Regions",
         "",
-        _to_code_table(_compact_true_table(true_top)),
+        _to_code_table(
+            _compact_true_table(
+                true_top,
+                include_dopt_context=include_dopt_context,
+            )
+        ),
         "",
     ]
     return "\n".join(lines)
@@ -601,7 +629,6 @@ def build_report(
         "- True oracle region label is `min(candidate fitness)` inside the region.",
         "- `true_rank` is the oracle rank among all regions; `in_coreset` marks Round-1 selected regions.",
         "- `dopt_w` is the Round-1 D-optimal design weight of the region.",
-        "- `dopt_rank` ranks D-opt importance in reverse weight order: rank 1 is the highest-weight region.",
         "- Observed region label is the best evaluated fitness found inside a Round-1 selected region.",
         "- Oracle-label mode is analysis-only and is used as an upper-bound diagnostic for label noise.",
         "- All-region oracle training is an in-sample model-capacity diagnostic; it uses all true region labels and does not use D-opt coreset selection.",
